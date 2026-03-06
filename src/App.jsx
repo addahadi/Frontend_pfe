@@ -6,6 +6,7 @@ import Login from "./modules/auth/pages/Login.jsx";
 import Register from "./modules/auth/pages/Register.jsx";
 import ForgotPassword from "./modules/auth/pages/ForgetPassword.jsx";
 import "./App.css";
+import Subscription from "./modules/auth/pages/Subscription.jsx";
 
 function App() {
   return (
@@ -19,6 +20,7 @@ function App() {
         <Route path="/auth/register" element={<Register />} />
         <Route path="/auth/forgot-password" element={<ForgotPassword />} />
       </Route>
+      <Route path="/choose-plan" element={<Subscription />} />
     </Routes>
   );
 }

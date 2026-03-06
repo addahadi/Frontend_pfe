@@ -33,7 +33,6 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // 🔐 1️⃣ Handle 401 (Token expired → refresh flow)
     if (
       error.response?.status === 401 &&
       !originalRequest._retry
@@ -57,7 +56,6 @@ api.interceptors.response.use(
       }
     }
 
-    // 🔁 2️⃣ Retry Logic (network errors or 5xx)
     const shouldRetry =
       !error.response || // network error
       (error.response.status >= 500 &&

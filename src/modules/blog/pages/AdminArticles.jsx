@@ -7,7 +7,8 @@ import { Edit2, Trash2 } from "lucide-react";
  */
 const AdminArticles = () => {
   return (
-    <div>
+    <div> 
+      hello
   
     </div>
   );

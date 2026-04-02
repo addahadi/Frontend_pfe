@@ -2,7 +2,8 @@ import React from 'react';
 
 const Tags = () => {
   return (
-    <div>
+    <div> 
+      hello world
     </div>
   );
 };

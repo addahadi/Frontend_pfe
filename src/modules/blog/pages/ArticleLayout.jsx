@@ -6,7 +6,10 @@ import { Btn, SectionTitle } from "../../../shared/components/ui/atoms.jsx";
 
 export default function ArticleLayout() {
   const location = useLocation(); 
-  const isEditor = location.pathname.includes("/articles/new") || location.pathname.includes("/articles/") && location.pathname.includes("/edit");
+  const isEditor =
+  location.pathname.includes("/articles/new") ||
+  (location.pathname.includes("/articles/") &&
+   location.pathname.includes("/edit"));
   const tabStyle = ({ isActive }) => ({
     padding: "10px 20px",
     background: "none",
@@ -48,10 +51,10 @@ export default function ArticleLayout() {
           Tags
         </NavLink>
         {isEditor && (
-       <NavLink to={location.pathname} style={tabStyle}>
-        New Article
-      </NavLink>
-  )}
+  <span style={{ ...tabStyle({ isActive: true }), cursor: "default" }}>
+    {location.pathname.includes("edit") ? "Edit Article" : "New Article"}
+  </span>
+)}
       </div>
 
       {/* ✅ Content (يتبدل حسب route) */}

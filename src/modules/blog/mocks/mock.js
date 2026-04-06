@@ -1,82 +1,100 @@
 export const articles = [
   {
-    id: 1,
+    article_id: "a1",
     title: "Introduction to Artificial Intelligence",
-    content: "Artificial Intelligence (AI) is transforming industries by enabling machines to learn from data and make decisions.",
-    tags: ["AI", "Technology"],
+    slug: "intro-to-ai",
+    excerpt: "AI is transforming the world...",
+    cover_img: "https://picsum.photos/400/200?1",
+    content: "Full content of AI article...",
     status: "PUBLISHED",
-    createdAt: "2026-04-01"
+    author_id: "u1",
+    tags: ["t1", "t2","t9"],
+    created_at: "2026-04-01",
   },
   {
-    id: 2,
-    title: "The Future of Web Development",
-    content: "Web development is evolving with frameworks like React, Vue, and modern tools like Tailwind CSS.",
-    tags: ["Web", "Programming"],
+    article_id: "a2",
+    title: "React Best Practices",
+    slug: "react-best-practices",
+    excerpt: "Improve your React apps...",
+    cover_img: "https://picsum.photos/400/200?2",
+    content: "Full content of React article...",
     status: "PUBLISHED",
-    createdAt: "2026-04-02"
+    author_id: "u2",
+    tags: ["t3"],
+    created_at: "2026-04-02",
   },
   {
-    id: 3,
-    title: "Understanding Databases",
-    content: "Databases store and organize data efficiently. SQL and NoSQL are the main types used today.",
-    tags: ["Database", "Backend"],
+    article_id: "a3",
+    title: "UI Design Trends 2026",
+    slug: "ui-trends-2026",
+    excerpt: "Modern UI trends...",
+    cover_img: "https://picsum.photos/400/200?3",
+    content: "Full content of design article...",
     status: "DRAFT",
-    createdAt: "2026-04-02"
+    author_id: "u1",
+    tags: ["t4"],
+    created_at: "2026-04-03",
   },
-  {
-    id: 4,
-    title: "Getting Started with React",
-    content: "React is a JavaScript library for building user interfaces using components.",
-    tags: ["React", "Frontend"],
-    status: "PUBLISHED",
-    createdAt: "2026-03-30"
-  },
-  {
-    id: 5,
-    title: "What is Tailwind CSS?",
-    content: "Tailwind CSS is a utility-first CSS framework that helps build modern designs بسرعة.",
-    tags: ["CSS", "Tailwind"],
-    status: "PUBLISHED",
-    createdAt: "2026-03-28"
-  },
-  {
-    id: 6,
-    title: "REST API Basics",
-    content: "REST APIs allow communication between frontend and backend using HTTP methods.",
-    tags: ["API", "Backend"],
-    status: "DRAFT",
-    createdAt: "2026-04-01"
-  },
-  {
-    id: 7,
-    title: "JavaScript ES6 Features",
-    content: "ES6 introduced arrow functions, destructuring, and many powerful features.",
-    tags: ["JavaScript"],
-    status: "PUBLISHED",
-    createdAt: "2026-03-25"
-  },
-  {
-    id: 8,
-    title: "Cybersecurity Fundamentals",
-    content: "Cybersecurity protects systems and data from digital attacks.",
-    tags: ["Security", "IT"],
-    status: "PUBLISHED",
-    createdAt: "2026-03-20"
-  },
-  {
-    id: 9,
-    title: "How Git Works",
-    content: "Git is a version control system that helps developers track changes in code.",
-    tags: ["Git", "Tools"],
-    status: "DRAFT",
-    createdAt: "2026-04-02"
-  },
-  {
-    id: 10,
-    title: "UI/UX Design Principles",
-    content: "Good UI/UX design focuses on user experience, accessibility, and simplicity.",
-    tags: ["Design", "UX"],
-    status: "PUBLISHED",
-    createdAt: "2026-03-27"
-  }
 ];
+
+export const tags = [
+ { id: 't1', name: 'Béton armé', count: 1 },
+  { id: 't2', name: 'Fondations', count: 2 },
+  { id: 't3', name: 'Isolation', count: 1 },
+  { id: 't4', name: 'Calcul de charge', count: 1 },
+  { id: 't5', name: 'Maçonnerie', count: 1 },
+  { id: 't6', name: 'Enduit', count: 0 },
+  { id: 't7', name: 'Carrelage', count: 0 },
+  { id: 't8', name: 'Actualité BTP', count: 2 }, 
+    { id: 't9', name: 'Youcef', count: 2 },
+]; 
+
+
+export const likes = [
+  {
+    like_id: "l1",
+    user_id: "u1",
+    article_id: "a2",
+  },
+  {
+    like_id: "l2",
+    user_id: "u2",
+    article_id: "a1",
+  },
+  {
+    like_id: "l3",
+    user_id: "u3",
+    article_id: "a1",
+  },
+];  
+export const saves = [
+  {
+    save_id: "s1",
+    user_id: "u1",
+    article_id: "a1",
+  },
+  {
+    save_id: "s2",
+    user_id: "u2",
+    article_id: "a2",
+  },
+];
+
+// get article likes count
+export const getLikesCount = (articleId) => {
+  return likes.filter((l) => l.article_id === articleId).length;
+};
+
+// check if user liked
+export const isLiked = (userId, articleId) => {
+  return likes.some(
+    (l) => l.user_id === userId && l.article_id === articleId
+  );
+};
+
+// check if saved
+export const isSaved = (userId, articleId) => {
+  return saves.some(
+    (s) => s.user_id === userId && s.article_id === articleId
+  );
+};

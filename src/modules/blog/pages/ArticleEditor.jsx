@@ -1,8 +1,8 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";  
+import React, { useState, useCallback, useEffect, useRef } from "react";   
+//logic functions
 import { getTags,createArticle } from "../services/blog.service"; 
+//icon import 
 
-
-//icon import
 import {
   Save, Globe, ImageIcon, Bold, Italic, Underline, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
@@ -10,6 +10,8 @@ import {
   ChevronDown, X, Plus, Tag, Type, Pilcrow,
   Heading1, Heading2, Heading3, Superscript, Subscript,
 } from "lucide-react";
+
+
 
 // ─── Lexical Core ─────────────────────────────────────────────────────────────
 import {
@@ -499,8 +501,9 @@ const TagSelector = ({ options, selected, onChange }) => {
   const [coverImage, setCoverImage] = useState(null);
   const [editorState, setEditorState] = useState(null);
   const [wordCount, setWordCount]   = useState(0);
-  const [isSaving, setIsSaving]     = useState(false);
-
+  const [isSaving, setIsSaving]     = useState(false); 
+  
+//slug function
   const slug = title.trim().toLowerCase()
     .replace(/[^\w\s-]/g, "")
     .replace(/\s+/g, "-");

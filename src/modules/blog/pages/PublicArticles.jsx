@@ -4,7 +4,6 @@ import {
   getTagName,
   getPublishedArticles,
   getTags, 
-  subscribe,
 } from "../services/blog.service"; 
 
 
@@ -13,17 +12,10 @@ const ARTICLES_PER_PAGE = 4;
 
 // ── Component ─────────────────────────────────────────────────────────────────
 const PublicArticles = () => { 
-  const [refresh, setRefresh] = useState(0);
 
-React.useEffect(() => {
-  const unsub = subscribe(() => {
-    setRefresh((r) => r + 1);
-  }); 
 
-  return unsub;
-}, []); 
 
-const published = useMemo(() => getPublishedArticles(), [refresh]); 
+const published = getPublishedArticles(); 
 
   const [search, setSearch] = useState("");
   const [activeTag, setActiveTag] = useState(null);
@@ -149,7 +141,7 @@ const published = useMemo(() => getPublishedArticles(), [refresh]);
                       {/* First tag badge */}
                       {article.tags[0] && (
                         <span className="absolute top-3 left-3 bg-blue-600 text-white text-[10px] font-semibold px-2.5 py-1 rounded uppercase tracking-wide shadow-sm">
-                          {getTagName(article.tags[0])}
+                          {getTagName(article.type)}
                         </span>
                       )}
                     </div>

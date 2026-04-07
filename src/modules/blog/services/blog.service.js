@@ -1,31 +1,30 @@
 // blog.service.js
-import { articles, tags, likes, saves } from "../mocks/mock";
+import { 
+  articles, 
+  tags, 
+  likes, 
+  saves, 
+  syncToStorage 
+} from "../mocks/mock";
 
-let tagsS = [...tags];
-let articlesS = [...articles];
- 
-let listeners = [];
+// Use the exported arrays directly - no copies!
+// This ensures all modifications affect the same references
 
-const notify = () => {
-  listeners.forEach((cb) => cb());
-};
-
-export const subscribe = (cb) => {
-  listeners.push(cb);
-  return () => {
-    listeners = listeners.filter((l) => l !== cb);
-  };
-};
 // ─── Helper Functions ───────────────────────────────────────────────────────
 
 const incrementTagCount = (tagId) => {
-  const tag = tagsS.find((t) => t.id === tagId);
+  const tag = tags.find((t) => t.id === tagId);
   if (tag) tag.count += 1;
 };
 
 const decrementTagCount = (tagId) => {
-  const tag = tagsS.find((t) => t.id === tagId);
+  const tag = tags.find((t) => t.id === tagId);
   if (tag && tag.count > 0) tag.count -= 1;
+};
+
+// Auto-sync helper
+const persist = () => {
+  syncToStorage();
 };
 
 // ─── Article Services ─────────────────────────────────────────────────────────
@@ -35,6 +34,7 @@ export const createArticle = (data) => {
     article_id: `a${Date.now()}`,
     title: data.title,
     slug: data.slug,
+    type: data.type,
     excerpt: data.excerpt,
     cover_img: data.cover_img || "",
     content: data.content || "",
@@ -44,59 +44,64 @@ export const createArticle = (data) => {
     created_at: new Date().toISOString().split("T")[0],
   };
 
-  articlesS.unshift(newArticle);
+  // Modify the exported array directly
+  articles.unshift(newArticle);
   
-  // Update tag counts
   data.tags?.forEach((tagId) => incrementTagCount(tagId));
-  notify();
+  
+  persist();
+  
   return newArticle;
 };
 
 export const getArticles = () => {
-  return articlesS;
+  return articles;
 };
 
 export const getPublishedArticles = () => {
-  return articlesS.filter((a) => a.status === "PUBLISHED");
+  return articles.filter((a) => a.status === "PUBLISHED");
 };
 
 export const deleteArticle = (id) => {
-  const article = articlesS.find((a) => a.article_id === id);
+  const article = articles.find((a) => a.article_id === id);
   
-  // Decrement tag counts before deletion
   article?.tags?.forEach((tagId) => decrementTagCount(tagId));
   
-  articlesS = articlesS.filter((a) => a.article_id !== id); 
-  notify();
-  return articlesS;
+  // Modify array in place
+  const index = articles.findIndex((a) => a.article_id === id);
+  if (index > -1) articles.splice(index, 1);
+  
+  persist();
+  
+  return articles;
 };
 
 export const updateArticle = (id, data) => {
-  const index = articlesS.findIndex((a) => a.article_id === id);
+  const index = articles.findIndex((a) => a.article_id === id);
   if (index === -1) return null;
 
-  const oldArticle = articlesS[index];
+  const oldArticle = articles[index];
   const oldTags = oldArticle.tags || [];
   const newTags = data.tags || [];
 
-  // Decrement counts for removed tags
   oldTags.forEach((tagId) => {
     if (!newTags.includes(tagId)) decrementTagCount(tagId);
   });
 
-  // Increment counts for added tags
   newTags.forEach((tagId) => {
     if (!oldTags.includes(tagId)) incrementTagCount(tagId);
   });
 
-  articlesS[index] = {
+  articles[index] = {
     ...oldArticle,
     ...data,
     updated_at: new Date().toISOString().split("T")[0],
   };
-notify();
-  return articlesS[index];
-}; 
+
+  persist();
+
+  return articles[index];
+};
 
 export const toggleLike = (userId, articleId) => {
   const index = likes.findIndex(
@@ -113,8 +118,8 @@ export const toggleLike = (userId, articleId) => {
     });
   }
 
-  notify();
-}; 
+  persist();
+};
 
 export const toggleSave = (userId, articleId) => {
   const index = saves.findIndex(
@@ -131,13 +136,13 @@ export const toggleSave = (userId, articleId) => {
     });
   }
 
-  notify();
+  persist();
 };
 
 export const getArticlesWithDetails = () => {
-  return articlesS.map((article) => {
+  return articles.map((article) => {
     const tagNames = article.tags.map((tagId) => {
-      const found = tagsS.find((t) => t.id === tagId);
+      const found = tags.find((t) => t.id === tagId);
       return found ? found.name : tagId;
     });
 
@@ -156,11 +161,11 @@ export const getArticlesWithDetails = () => {
 // ─── Tag Services ───────────────────────────────────────────────────────────
 
 export const getTags = () => {
-  return tagsS;
+  return tags;
 };
 
 export const getTagName = (tagId) => {
-  return tagsS.find((t) => t.id === tagId)?.name || tagId;
+  return tags.find((t) => t.id === tagId)?.name || tagId;
 };
 
 export const addTag = (name) => {
@@ -170,28 +175,35 @@ export const addTag = (name) => {
     count: 0,
   };
 
-  tagsS = [newTag, ...tagsS];
+  tags.unshift(newTag);
+  
+  persist();
+  
   return newTag;
 };
 
 export const deleteTag = (id) => {
-  // Remove tag from all articles first
-  articlesS = articlesS.map((article) => ({
-    ...article,
-    tags: article.tags?.filter((tagId) => tagId !== id) || [],
-  }));
+  // Update articles in place
+  articles.forEach((article, idx) => {
+    articles[idx] = {
+      ...article,
+      tags: article.tags?.filter((tagId) => tagId !== id) || [],
+    };
+  });
 
-  tagsS = tagsS.filter((tag) => tag.id !== id);
-  return tagsS;
+  const tagIndex = tags.findIndex((t) => t.id === id);
+  if (tagIndex > -1) tags.splice(tagIndex, 1);
+  
+  persist();
+  
+  return tags;
 };
 
-// ─── Like Services ────────────────────────────────────────────────────────────
+// ─── Like/Save Services ─────────────────────────────────────────────────────
 
 export const getLikesCount = (articleId) => {
   return likes.filter((l) => l.article_id === articleId).length;
 };
-
-// ─── Save Services ──────────────────────────────────────────────────────────
 
 export const getSavesCount = (articleId) => {
   return saves.filter((s) => s.article_id === articleId).length;

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Plus, Eye, CheckCircle, Ban, X, Heart, Bookmark } from 'lucide-react';
+import { Search, Plus, Eye, CheckCircle, Ban, X, Heart, Bookmark, Trash2 } from 'lucide-react';
 
 // --- MOCK DATA ---
 const mockUsers = [
@@ -32,21 +32,34 @@ const PlanBadge = ({ plan }) => {
   return <span className={`px-3 py-1 rounded-full text-xs font-medium ${styles[plan]}`}>{plan}</span>;
 };
 
+// Helper to add 1 year to the joined date for the mock subscription end date
+const getEndDate = (dateString) => {
+  const date = new Date(dateString);
+  date.setFullYear(date.getFullYear() + 1);
+  return date.toISOString().split('T');
+};
+
 export default function Users() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
-  const [activeTab, setActiveTab] = useState('Engagement');
+  const [activeTab, setActiveTab] = useState('Profile');
+
+  // Filter users based on search term
+  const filteredUsers = mockUsers.filter(user => 
+    user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.email.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
-    <div className="flex h-full bg-white relative">
+    <div className="flex h-screen bg-white relative overflow-hidden">
       {/* MAIN CONTENT AREA */}
-      <div className={`flex-1 p-8 transition-all duration-300 ${selectedUser ? 'mr-80' : ''}`}>
+      <div className={`flex-1 p-8 overflow-auto transition-all duration-300 ${selectedUser ? 'mr-96' : ''}`}>
         
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Users</h1>
-            <p className="text-gray-500 mt-1">8 total accounts</p>
+            <p className="text-gray-500 mt-1">{mockUsers.length} total accounts</p>
           </div>
           <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2">
             <Plus className="w-4 h-4" /> Invite User
@@ -68,10 +81,10 @@ export default function Users() {
             />
           </div>
           <select className="border border-gray-200 rounded-lg px-4 py-2 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option>All</option>
+            <option>All Statuses</option>
           </select>
           <select className="border border-gray-200 rounded-lg px-4 py-2 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option>All</option>
+            <option>All Plans</option>
           </select>
         </div>
 
@@ -90,7 +103,7 @@ export default function Users() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {mockUsers.map((user) => (
+              {filteredUsers.map((user) => (
                 <tr key={user.id} className="hover:bg-gray-50/50 transition-colors">
                   <td className="px-6 py-4 flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-semibold text-sm">
@@ -130,10 +143,15 @@ export default function Users() {
               ))}
             </tbody>
           </table>
+          {filteredUsers.length === 0 && (
+            <div className="text-center py-8 text-gray-500">
+              No users found matching "{searchTerm}"
+            </div>
+          )}
         </div>
       </div>
 
-      {/* SIDE DRAWER (Conditional Rendering) */}
+      {/* SIDE DRAWER */}
       {selectedUser && (
         <div className="w-96 bg-white border-l border-gray-100 fixed right-0 top-0 h-full shadow-lg z-50 flex flex-col pt-16"> 
           
@@ -154,7 +172,7 @@ export default function Users() {
               </div>
             </div>
             <div className="flex flex-wrap gap-2 mt-4">
-              <span className="px-2 py-1 bg-green-50 text-green-600 rounded text-xs font-bold uppercase">Active</span>
+              <span className="px-2 py-1 bg-green-50 text-green-600 rounded text-xs font-bold uppercase">{selectedUser.status}</span>
               <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded text-xs font-bold uppercase">{selectedUser.plan}</span>
               <span className="px-2 py-1 bg-green-50 text-green-600 rounded text-xs font-bold uppercase">{selectedUser.subStatus}</span>
               <span className="px-2 py-1 bg-cyan-50 text-cyan-600 rounded text-xs font-bold uppercase">Normal</span>
@@ -163,20 +181,92 @@ export default function Users() {
 
           <div className="flex border-b border-gray-100">
             <button 
-              className={`flex-1 py-3 text-sm font-medium border-b-2 ${activeTab === 'Profile' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+              className={`flex-1 py-3 text-sm font-medium border-b-2 ${activeTab === 'Profile' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
               onClick={() => setActiveTab('Profile')}
             >
               Profile
             </button>
             <button 
-              className={`flex-1 py-3 text-sm font-medium border-b-2 ${activeTab === 'Engagement' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+              className={`flex-1 py-3 text-sm font-medium border-b-2 ${activeTab === 'Engagement' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
               onClick={() => setActiveTab('Engagement')}
             >
               Engagement
             </button>
           </div>
 
-          <div className="p-6 overflow-y-auto">
+          <div className="p-6 overflow-y-auto flex-1">
+            
+            {/* PROFILE TAB CONTENT */}
+            {activeTab === 'Profile' && (
+              <div className="space-y-4">
+                {/* User ID */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">User ID</label>
+                  <div className="w-full px-3 py-2 border border-gray-100 rounded-lg bg-gray-50/50 text-gray-900 text-sm">
+                    u{selectedUser.id}
+                  </div>
+                </div>
+
+                {/* Name */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">Name</label>
+                  <div className="w-full px-3 py-2 border border-gray-100 rounded-lg bg-gray-50/50 text-gray-900 text-sm">
+                    {selectedUser.name}
+                  </div>
+                </div>
+
+                {/* Email */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">Email</label>
+                  <div className="w-full px-3 py-2 border border-gray-100 rounded-lg bg-gray-50/50 text-gray-900 text-sm">
+                    {selectedUser.email}
+                  </div>
+                </div>
+
+                {/* Status */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">Status</label>
+                  <div className="w-full px-3 py-2 border border-gray-100 rounded-lg bg-gray-50/50 text-gray-900 text-sm">
+                    {selectedUser.status.toLowerCase()}
+                  </div>
+                </div>
+
+                {/* Subscription Card */}
+                <div className="border border-gray-100 rounded-xl p-4 mt-2 shadow-sm">
+                  <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-4">Subscription</h4>
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400 font-medium">Plan</span>
+                      <span className="font-medium text-gray-900">{selectedUser.plan}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400 font-medium">Type</span>
+                      <span className="font-medium text-gray-900">NORMAL</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400 font-medium">Status</span>
+                      <span className="font-medium text-gray-900">{selectedUser.subStatus}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400 font-medium">End Date</span>
+                      <span className="font-medium text-gray-900">{getEndDate(selectedUser.joined)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-3 pt-6 pb-4">
+                  <button className="flex items-center justify-center gap-2 px-4 py-2.5 border border-red-100 text-red-600 rounded-xl hover:bg-red-50 text-sm font-medium transition-colors w-fit pr-6">
+                    <Ban className="w-4 h-4" /> Ban User
+                  </button>
+                  <button className="flex items-center justify-center gap-2 px-4 py-2.5 text-blue-600 rounded-xl hover:bg-blue-50 text-sm font-medium transition-colors w-fit pr-6">
+                    <Trash2 className="w-4 h-4" /> Delete
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ENGAGEMENT TAB CONTENT */}
             {activeTab === 'Engagement' && (
               <div className="space-y-6">
                 <div>
@@ -200,9 +290,7 @@ export default function Users() {
                 </div>
               </div>
             )}
-            {activeTab === 'Profile' && (
-              <div className="text-sm text-gray-500">Profile details go here...</div>
-            )}
+            
           </div>
         </div>
       )}

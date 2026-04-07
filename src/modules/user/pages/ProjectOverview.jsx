@@ -44,9 +44,9 @@ const ProjectOverview = () => {
   ];
 
   const recentCalcs = [
-    { id: 1, category: "Grand Travaux", element: "Isolated Footing #12", keyResult: "3.75 m²", timestamp: "2 mins ago" },
-    { id: 2, category: "Portes & Fenêtres", element: "Main Entrance Glass", keyResult: "12.40 m²", timestamp: "45 mins ago" },
-    { id: 3, category: "Finition", element: "Lobby Wall Coating", keyResult: "450.00 m²", timestamp: "2 hours ago" },
+    { id: 1, category: "🏗️Grand Travaux", element: "Isolated Footing #12", keyResult: "3.75 m²", timestamp: "2 mins ago" },
+    { id: 2, category: "🎨Portes & Fenêtres", element: "Main Entrance Glass", keyResult: "12.40 m²", timestamp: "45 mins ago" },
+    { id: 3, category: "🚪Finition", element: "Lobby Wall Coating", keyResult: "450.00 m²", timestamp: "2 hours ago" },
   ];
 
   return (

@@ -1,10 +1,7 @@
-// src/modules/user/pages/CategoryDetail.jsx
 import React, { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { ChevronDown, ChevronRight, Home, DollarSign, Info, Calculator, ArrowLeft, Share2, Printer } from "lucide-react";
 import { CONSTRUCTION_TREE } from "../../../shared/lib/constants";
-
-// ==================== مكون الحاسبة (للعرض عند وجود categoryId) ====================
 const CalculatorPage = ({ categoryNode, projectId }) => {
   const [length, setLength] = useState(2.50);
   const [width, setWidth] = useState(2.50);
@@ -18,7 +15,6 @@ const CalculatorPage = ({ categoryNode, projectId }) => {
   const [showCostEstimate, setShowCostEstimate] = useState(false);
   const [breadcrumb, setBreadcrumb] = useState([]);
 
-  // بناء مسار الـ breadcrumb
   const findNodeAndPath = (nodes, targetId, currentPath = []) => {
     for (const node of nodes) {
       const newPath = [...currentPath, { id: node.id, name: node.name }];
@@ -84,13 +80,13 @@ const CalculatorPage = ({ categoryNode, projectId }) => {
 
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-6">
-      {/* أيقونات المشاركة والطباعة */}
+      
       <div className="flex justify-end mb-4 gap-2">
         <button onClick={handleShare} className="p-2 rounded-full hover:bg-slate-100"><Share2 size={20} className="text-slate-500" /></button>
         <button onClick={handlePrint} className="p-2 rounded-full hover:bg-slate-100"><Printer size={20} className="text-slate-500" /></button>
       </div>
 
-      {/* Breadcrumb */}
+    
       {breadcrumb.length > 0 && (
         <div className="mb-4 text-sm text-slate-500 flex flex-wrap gap-1">
           <Link to={`/projects/${projectId}/explorer`} className="hover:text-primary flex items-center gap-1"><Home size={14} /> Project</Link>
@@ -107,15 +103,15 @@ const CalculatorPage = ({ categoryNode, projectId }) => {
         </div>
       )}
 
-      {/* العنوان */}
+      
       <div className="mb-6">
         <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">Isolated Footing</h1>
         <p className="text-sm text-slate-500 mt-1">Configure and calculate structural quantities for reinforced concrete isolated footings.</p>
       </div>
 
-      {/* عمودين */}
+      
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* العمود الأيسر: المدخلات */}
+        
         <div className="space-y-6">
           <div className="bg-white dark:bg-slate-800 rounded-xl border p-6 shadow-sm">
             <h2 className="text-lg font-bold mb-4">INPUT DIMENSIONS</h2>
@@ -143,7 +139,7 @@ const CalculatorPage = ({ categoryNode, projectId }) => {
           </div>
         </div>
 
-        {/* العمود الأيمن: النتائج والصيغ */}
+        
         <div className="space-y-6">
           <div className="bg-blue-800 dark:bg-blue-950 rounded-xl border border-blue-700 p-6 text-white">
             <h2 className="text-lg font-bold mb-4">GRAND TRAVAUX</h2>
@@ -164,7 +160,6 @@ const CalculatorPage = ({ categoryNode, projectId }) => {
   );
 };
 
-// ==================== مكون Category Browser (عند عدم وجود categoryId) ====================
 const CategoryBrowser = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
@@ -198,14 +193,10 @@ const CategoryBrowser = () => {
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">QuantiConstruct</h1>
-        <p className="text-sm text-slate-500">Category Browser</p>
+       
       </div>
 
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-bold text-primary">SKYLINE TOWER</h2>
-        <button onClick={collapseAll} className="text-sm text-slate-500 hover:text-primary flex items-center gap-1"><ChevronDown size={14} /> REDUIRE TOUT</button>
-      </div>
+     
 
       {/* Grand Travaux section */}
       <div className="border-b border-slate-200 dark:border-slate-700 pb-6 mb-6">

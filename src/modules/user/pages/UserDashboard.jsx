@@ -1,7 +1,7 @@
 // src/modules/user/pages/UserDashboard.jsx
 import React from "react";
 import { Link } from "react-router-dom";
-import { FolderOpen, CheckCircle, Layers, Plus } from "lucide-react";
+import {  Hammer, BadgeCheck , User, Plus } from "lucide-react";
 
 const UserDashboard = () => {
   const projects = [
@@ -47,7 +47,10 @@ const UserDashboard = () => {
       {/* رأس الصفحة مع زر Create Project */}
       <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">WORKSPACE DASHBOARD</h1>
+          <h3 className="text-lg md:text-xl font-bold text-blue-600 dark:text-blue-400">
+🟦WORKSPACEDASHBOARD  
+</h3>
+          <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">Active projects</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             Manage your architectural portfolio. Monitor status and project metadata as defined in the system registry.
           </p>
@@ -68,21 +71,21 @@ const UserDashboard = () => {
             <p className="text-sm text-slate-500 dark:text-slate-400">ACTIVE STATUS</p>
             <p className="text-2xl font-bold text-slate-900 dark:text-white">{stats.activeStatus} Projects</p>
           </div>
-          <FolderOpen className="text-primary w-8 h-8 opacity-80" />
+          <Hammer className="w-5 h-5 text-blue-600 dark:text-blue-400" />
         </div>
         <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 flex items-center justify-between">
           <div>
             <p className="text-sm text-slate-500 dark:text-slate-400">COMPLETED</p>
             <p className="text-2xl font-bold text-slate-900 dark:text-white">{stats.completed} Units</p>
           </div>
-          <CheckCircle className="text-green-500 w-8 h-8 opacity-80" />
+          <BadgeCheck className="w-6 h-6 text-green-600 dark:text-green-400" />
         </div>
         <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 flex items-center justify-between">
           <div>
             <p className="text-sm text-slate-500 dark:text-slate-400">CATEGORIES</p>
             <p className="text-2xl font-bold text-slate-900 dark:text-white">{stats.categories} Groups</p>
           </div>
-          <Layers className="text-accent w-8 h-8 opacity-80" />
+          <User className="w-6 h-6 text-orange-500" />
         </div>
       </div>
 

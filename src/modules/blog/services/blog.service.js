@@ -6,7 +6,7 @@ import {
   saves, 
   syncToStorage 
 } from "../mocks/mock";
-
+ 
 // Use the exported arrays directly - no copies!
 // This ensures all modifications affect the same references
 
@@ -20,6 +20,15 @@ const incrementTagCount = (tagId) => {
 const decrementTagCount = (tagId) => {
   const tag = tags.find((t) => t.id === tagId);
   if (tag && tag.count > 0) tag.count -= 1;
+}; 
+
+export const isLexicalJson = (content) => {
+  try {
+    const parsed = JSON.parse(content);
+    return parsed?.root !== undefined;
+  } catch {
+    return false;
+  }
 };
 
 // Auto-sync helper

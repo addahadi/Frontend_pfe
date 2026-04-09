@@ -17,6 +17,55 @@ import {
   getPublishedArticles,
   getTags,
 } from "../services/blog.service";
+import { createEditor } from "lexical";
+import { $generateHtmlFromNodes } from "@lexical/html";
+import { HeadingNode, QuoteNode } from "@lexical/rich-text";
+import { ListNode, ListItemNode } from "@lexical/list";
+import { CodeNode, CodeHighlightNode } from "@lexical/code";
+import { AutoLinkNode, LinkNode } from "@lexical/link";
+
+// ── Lexical JSON detector ────────────────────────────────────────────────────
+const isLexicalJson = (content) => {
+  try {
+    const parsed = JSON.parse(content);
+    return parsed?.root !== undefined;
+  } catch {
+    return false;
+  }
+};
+
+// ── Hook: converts raw content (JSON or HTML) → HTML string ─────────────────
+const useRenderedContent = (rawContent) => {
+  const [html, setHtml] = useState("");
+
+  useEffect(() => {
+    if (!rawContent) return;
+
+    // Plain HTML — use directly
+    if (!isLexicalJson(rawContent)) {
+      setHtml(rawContent);
+      return;
+    }
+
+    // Lexical JSON — convert to HTML
+    const editor = createEditor({
+      nodes: [
+        HeadingNode, QuoteNode,
+        ListNode, ListItemNode,
+        CodeNode, CodeHighlightNode,
+        AutoLinkNode, LinkNode,
+      ],
+    });
+
+    const parsed = editor.parseEditorState(rawContent);
+    editor.setEditorState(parsed);
+    editor.read(() => {
+      setHtml($generateHtmlFromNodes(editor, null));
+    });
+  }, [rawContent]);
+
+  return html;
+};
 
 // ── Helper Functions ─────────────────────────────────────────────────────────
 
@@ -30,7 +79,9 @@ const fmtDate = (iso) => {
 
 const estimateReadTime = (content) => {
   const wordsPerMinute = 200;
-  const wordCount = content.split(/\s+/).length;
+  // Strip HTML tags for accurate word count
+  const text = content.replace(/<[^>]*>/g, " ");
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
   return Math.max(1, Math.ceil(wordCount / wordsPerMinute));
 };
 
@@ -74,7 +125,7 @@ const Hero = ({ article, likesCount, isLiked, isSaved, onLike, onSave }) => (
       {/* Category Badge */}
       <div className="flex items-center gap-2 mb-4">
         <span className="inline-flex w-fit items-center px-3 py-1 rounded-full bg-blue-600 text-white text-xs font-semibold uppercase tracking-wider">
-          {article.tags[0] ? getTagName(article.tags[0]) : "Article"}
+          {article.type}
         </span>
         {article.tags.length > 1 && (
           <span className="inline-flex w-fit items-center px-2 py-1 rounded-full bg-white/20 text-white text-xs backdrop-blur-sm">
@@ -88,7 +139,7 @@ const Hero = ({ article, likesCount, isLiked, isSaved, onLike, onSave }) => (
         {article.title}
       </h1>
 
-      {/* Meta Info (No Author) */}
+      {/* Meta Info */}
       <div className="flex flex-wrap items-center gap-4 text-white/90">
         <div className="flex items-center gap-2 text-sm">
           <Calendar size={14} />
@@ -137,11 +188,9 @@ const Hero = ({ article, likesCount, isLiked, isSaved, onLike, onSave }) => (
   </div>
 );
 
+// ── ArticleContent — THE FIXED COMPONENT ────────────────────────────────────
 const ArticleContent = ({ article }) => {
-  // Split content by newlines to create paragraphs if needed
-  const contentParagraphs = article.content
-    .split("\n")
-    .filter((p) => p.trim().length > 0);
+  const html = useRenderedContent(article.content);
 
   return (
     <div className="prose max-w-none">
@@ -150,21 +199,28 @@ const ArticleContent = ({ article }) => {
         {article.excerpt}
       </p>
 
-      {/* Main content - real data only */}
-      {contentParagraphs.length > 1 ? (
-        contentParagraphs.map((paragraph, index) => (
-          <p
-            key={index}
-            className="text-gray-600 leading-relaxed mb-4 text-sm md:text-base"
-          >
-            {paragraph}
-          </p>
-        ))
-      ) : (
-        <p className="text-gray-600 leading-relaxed mb-4 text-sm md:text-base whitespace-pre-wrap">
-          {article.content}
-        </p>
-      )}
+      {/* Main content — always rendered as HTML */}
+      <div
+        className="text-gray-700 leading-relaxed text-sm md:text-base
+          [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-gray-900 [&_h1]:mt-8 [&_h1]:mb-3
+          [&_h2]:text-xl  [&_h2]:font-bold [&_h2]:text-gray-800 [&_h2]:mt-6 [&_h2]:mb-2
+          [&_h3]:text-lg  [&_h3]:font-semibold [&_h3]:text-gray-700 [&_h3]:mt-5 [&_h3]:mb-2
+          [&_h4]:text-base [&_h4]:font-semibold [&_h4]:text-gray-700 [&_h4]:mt-4 [&_h4]:mb-1
+          [&_p]:mb-4 [&_p]:leading-relaxed
+          [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:mb-4 [&_ul]:space-y-1
+          [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-4 [&_ol]:space-y-1
+          [&_li]:leading-relaxed
+          [&_blockquote]:border-l-4 [&_blockquote]:border-blue-400 [&_blockquote]:pl-4
+          [&_blockquote]:italic [&_blockquote]:text-gray-500 [&_blockquote]:my-4
+          [&_code]:bg-gray-100 [&_code]:text-red-600 [&_code]:px-1.5 [&_code]:py-0.5
+          [&_code]:rounded [&_code]:text-sm [&_code]:font-mono
+          [&_pre]:bg-gray-900 [&_pre]:text-gray-100 [&_pre]:p-4 [&_pre]:rounded-xl
+          [&_pre]:overflow-x-auto [&_pre]:my-4 [&_pre]:text-sm
+          [&_a]:text-blue-600 [&_a]:underline [&_a]:hover:text-blue-800
+          [&_strong]:font-bold [&_strong]:text-gray-900
+          [&_em]:italic"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
     </div>
   );
 };
@@ -192,9 +248,7 @@ const TagList = ({ tags }) => (
 );
 
 const RelatedArticles = ({ articles, currentSlug }) => {
-  const related = articles
-    .filter((a) => a.slug !== currentSlug)
-    .slice(0, 3);
+  const related = articles.filter((a) => a.slug !== currentSlug).slice(0, 3);
 
   if (related.length === 0) return null;
 
@@ -219,7 +273,7 @@ const RelatedArticles = ({ articles, currentSlug }) => {
               />
               <div className="flex-1 min-w-0">
                 <span className="text-[10px] font-semibold text-blue-600 uppercase tracking-wider">
-                  {item.tags[0] ? getTagName(item.tags[0]) : "Article"}
+                  {item.type}
                 </span>
                 <h4 className="text-sm font-semibold text-gray-900 mt-0.5 group-hover:text-blue-700 transition-colors line-clamp-2">
                   {item.title}
@@ -264,8 +318,7 @@ const PopularTags = () => {
 };
 
 const ShareSection = ({ title }) => {
-  const shareUrl =
-    typeof window !== "undefined" ? window.location.href : "";
+  const shareUrl = typeof window !== "undefined" ? window.location.href : "";
 
   const copyLink = () => {
     navigator.clipboard.writeText(shareUrl);
@@ -279,9 +332,7 @@ const ShareSection = ({ title }) => {
         </span>
         <div className="flex items-center gap-2">
           <a
-            href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(
-              title
-            )}&url=${encodeURIComponent(shareUrl)}`}
+            href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(title)}&url=${encodeURIComponent(shareUrl)}`}
             target="_blank"
             rel="noopener noreferrer"
             className="p-2.5 bg-gray-100 text-gray-600 hover:text-blue-500 hover:bg-blue-50 rounded-full transition-all"
@@ -289,9 +340,7 @@ const ShareSection = ({ title }) => {
             <Twitter size={18} />
           </a>
           <a
-            href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(
-              shareUrl
-            )}`}
+            href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`}
             target="_blank"
             rel="noopener noreferrer"
             className="p-2.5 bg-gray-100 text-gray-600 hover:text-blue-700 hover:bg-blue-50 rounded-full transition-all"
@@ -320,8 +369,6 @@ const ArticleView = () => {
   const [liked, setLiked] = useState(false);
   const [saved, setSaved] = useState(false);
   const [likesCount, setLikesCount] = useState(0);
-
-
 
   useEffect(() => {
     setLoading(true);

@@ -1,17 +1,80 @@
 import React, { useState } from "react"; 
-import { deleteArticle } from "../services/blog.service"; 
+import { deleteArticle, updateArticle } from "../services/blog.service"; 
 import { getArticlesWithDetails } from "../services/blog.service";
-import { HeartIcon, BookmarkIcon, EditIcon,ArchiveIcon, TrashIcon , PublishIcon, SearchIcon } from "../components/component";
+import { HeartIcon, BookmarkIcon, EditIcon, ArchiveIcon, TrashIcon, PublishIcon, SearchIcon } from "../components/component";
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// Confirm Delete Dialog
+// ═══════════════════════════════════════════════════════════════════════════════
+const ConfirmDialog = ({ article, onConfirm, onCancel }) => {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        onClick={onCancel}
+      />
 
+      {/* Dialog Box */}
+      <div className="relative bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm mx-4 animate-[popIn_0.2s_ease-out]">
+        
+        {/* Icon */}
+        <div className="flex items-center justify-center w-12 h-12 bg-red-100 rounded-full mx-auto mb-4">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+            <path d="M10 11v6M14 11v6" />
+            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+          </svg>
+        </div>
 
+        {/* Text */}
+        <h3 className="text-center text-gray-900 font-bold text-base mb-1">
+          Delete Article?
+        </h3>
+        <p className="text-center text-gray-500 text-sm mb-1">
+          You are about to delete:
+        </p>
+        <p className="text-center text-gray-800 font-semibold text-sm mb-5 px-2 truncate">
+          "{article.title}"
+        </p>
+        <p className="text-center text-red-500 text-xs mb-6">
+          This action cannot be undone.
+        </p>
 
+        {/* Buttons */}
+        <div className="flex gap-3">
+          <button
+            onClick={onCancel}
+            className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium text-white bg-red-500 hover:bg-red-600 transition-colors"
+          >
+            Yes, Delete
+          </button>
+        </div>
+      </div>
 
+      <style>{`
+        @keyframes popIn {
+          from { opacity: 0; transform: scale(0.92); }
+          to   { opacity: 1; transform: scale(1); }
+        }
+      `}</style>
+    </div>
+  );
+};
 
-
+// ═══════════════════════════════════════════════════════════════════════════════
+// Badges
+// ═══════════════════════════════════════════════════════════════════════════════
 const TypeBadge = ({ type }) => {
   const styles = {
-    BLOG: "text-blue-500 bg-blue-50 border border-blue-200",
+    BLOG:      "text-blue-500 bg-blue-50 border border-blue-200",
     ACTUALITE: "text-amber-500 bg-amber-50 border border-amber-200",
   };
   return (
@@ -24,7 +87,7 @@ const TypeBadge = ({ type }) => {
 const StatusBadge = ({ status }) => {
   const styles = {
     PUBLISHED: "text-green-600 bg-green-50 border border-green-200",
-    DRAFT: "text-amber-600 bg-amber-50 border border-amber-200",
+    DRAFT:     "text-amber-600 bg-amber-50 border border-amber-200",
   };
   return (
     <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold tracking-wide ${styles[status]}`}>
@@ -33,29 +96,46 @@ const StatusBadge = ({ status }) => {
   );
 };
 
-const AdminArticles = () => {   
+// ═══════════════════════════════════════════════════════════════════════════════
+// Main Component
+// ═══════════════════════════════════════════════════════════════════════════════
+const AdminArticles = () => {
+  const [search, setSearch]             = useState("");
+  const [typeFilter, setTypeFilter]     = useState("All");
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [articles, setArticles]         = useState(getArticlesWithDetails());
+  const [confirmTarget, setConfirmTarget] = useState(null);
 
-
-
-  const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState("All");
-  const [statusFilter, setStatusFilter] = useState("All"); 
-  const [articles, setArticles] = useState(getArticlesWithDetails());
   const filtered = articles.filter((a) => {
     const matchSearch = a.title.toLowerCase().includes(search.toLowerCase());
-    const matchType = typeFilter === "All" || a.type === typeFilter;
+    const matchType   = typeFilter === "All" || a.type === typeFilter;
     const matchStatus = statusFilter === "All" || a.status === statusFilter;
     return matchSearch && matchType && matchStatus;
-  });  
-  
-  // ✅ الصحيح — احذف ثم اجلب البيانات المنسّ قة
-const handleDeleteArticle = (id) => {
-  deleteArticle(id);
-  setArticles(getArticlesWithDetails()); // ← بيانات كاملة
-};
+  });
+
+  const handleDeleteConfirmed = () => {
+    deleteArticle(confirmTarget.article_id);
+    setArticles(getArticlesWithDetails());
+    setConfirmTarget(null);
+  };
+
+  const handleToggleStatus = (article) => {
+    const newStatus = article.status === "PUBLISHED" ? "DRAFT" : "PUBLISHED";
+    updateArticle(article.article_id, { status: newStatus });
+    setArticles(getArticlesWithDetails());
+  };
 
   return (
     <div className="w-full bg-white rounded-xl shadow-sm font-sans">
+
+      {/* Confirm Dialog */}
+      {confirmTarget && (
+        <ConfirmDialog
+          article={confirmTarget}
+          onConfirm={handleDeleteConfirmed}
+          onCancel={() => setConfirmTarget(null)}
+        />
+      )}
 
       {/* ── Top Bar ── */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
@@ -115,27 +195,16 @@ const handleDeleteArticle = (id) => {
 
         <tbody>
           {filtered.map((article, idx) => (
-            <tr 
-            key={article.article_id}
+            <tr
+              key={article.article_id}
               className={`hover:bg-gray-50 transition-colors ${idx < filtered.length - 1 ? "border-b border-gray-100" : ""}`}
             >
-              {/* Title */}
               <td className="px-4 py-4">
                 <div className="font-semibold text-sm text-gray-900 truncate">{article.title}</div>
                 <div className="text-xs text-gray-400 truncate mt-0.5">{article.description}</div>
               </td>
-
-              {/* Type */}
-              <td className="px-4 py-4">
-                <TypeBadge type={article.type} />
-              </td>
-
-              {/* Status */}
-              <td className="px-4 py-4">
-                <StatusBadge status={article.status} />
-              </td>
-
-              {/* Tags */}
+              <td className="px-4 py-4"><TypeBadge type={article.type} /></td>
+              <td className="px-4 py-4"><StatusBadge status={article.status} /></td>
               <td className="px-4 py-4">
                 <div className="flex flex-col gap-1">
                   {article.tags.map((tag) => (
@@ -145,50 +214,57 @@ const handleDeleteArticle = (id) => {
                   ))}
                 </div>
               </td>
-
-              {/* Likes */}
               <td className="px-4 py-4">
                 <span className="flex items-center gap-1 text-red-500 text-xs font-medium">
                   <HeartIcon /> {article.likes}
                 </span>
               </td>
-
-              {/* Saves */}
               <td className="px-4 py-4">
                 <span className="flex items-center gap-1 text-gray-500 text-xs font-medium">
                   <BookmarkIcon /> {article.saves}
                 </span>
               </td>
-
-              {/* Actions */}
-              <td className="px-4 py-4 ">
+              <td className="px-4 py-4">
                 <div className="flex items-center gap-4">
                   <button className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-colors cursor-pointer whitespace-nowrap">
                     <EditIcon /> Edit
                   </button>
 
                   {article.status === "PUBLISHED" ? (
-                    <button className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-colors cursor-pointer whitespace-nowrap">
+                    <button
+                      onClick={() => handleToggleStatus(article)}
+                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-colors cursor-pointer whitespace-nowrap"
+                    >
                       <ArchiveIcon /> Archive
                     </button>
                   ) : (
-                    <button className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-green-600 bg-white border border-green-500 hover:bg-green-50 transition-colors cursor-pointer whitespace-nowrap">
+                    <button
+                      onClick={() => handleToggleStatus(article)}
+                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-green-600 bg-white border border-green-500 hover:bg-green-50 transition-colors cursor-pointer whitespace-nowrap"
+                    >
                       <PublishIcon /> Publish
                     </button>
                   )}
 
-<button
-onClick={() => handleDeleteArticle(article.article_id)}
-  className="inline-flex items-center justify-center w-10 h-7 rounded-md text-red-500 bg-white border border-red-200 hover:bg-red-50 hover:border-red-400 transition-colors cursor-pointer flex-shrink-0"
->
-  <TrashIcon />
-</button>
+                  {/* Delete — opens confirm dialog */}
+                  <button
+                    onClick={() => setConfirmTarget(article)}
+                    className="inline-flex items-center justify-center w-10 h-7 rounded-md text-red-500 bg-white border border-red-200 hover:bg-red-50 hover:border-red-400 transition-colors cursor-pointer flex-shrink-0"
+                  >
+                    <TrashIcon />
+                  </button>
                 </div>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+
+      {filtered.length === 0 && (
+        <div className="py-16 text-center text-gray-400 text-sm">
+          No articles found.
+        </div>
+      )}
     </div>
   );
 };

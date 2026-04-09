@@ -1,54 +1,10 @@
-import React from 'react';
-
-import  { useState } from 'react';
+import React, { useState } from 'react';
 import { Search, Edit2, Trash2, Plus, Save, X } from 'lucide-react';
-
+import { initialPlans } from './mock.js'; // <-- Import the mock data here
 
 const PlanFeatures = () => {
-
-  // Moved plans to state so they can be edited/added
-  const [plans, setPlans] = useState([
-    {
-      name: 'Free',
-      tag: 'NORMAL',
-      tagColor: 'bg-cyan-50 text-cyan-500',
-      description: 'Basic access for individuals',
-      features: [
-        { label: 'max_projects', value: '3' },
-        { label: 'max_calculations', value: '20' },
-        { label: 'can_export_pdf', value: 'false', isBoolean: true },
-        { label: 'support_level', value: 'none' },
-      ]
-    },
-    {
-      name: 'Pro',
-      tag: 'NORMAL',
-      tagColor: 'bg-cyan-50 text-cyan-500',
-      description: 'Full access for professionals',
-      features: [
-        { label: 'max_projects', value: '20' },
-        { label: 'max_calculations', value: '500' },
-        { label: 'can_export_pdf', value: 'true', isBoolean: true },
-        { label: 'can_use_api', value: 'false', isBoolean: true },
-        { label: 'support_level', value: 'email' },
-      ]
-    },
-    {
-      name: 'Enterprise',
-      tag: 'COMPANY',
-      tagColor: 'bg-purple-50 text-purple-500',
-      description: 'Unlimited for construction firms',
-      features: [
-        { label: 'max_projects', value: 'unlimited' },
-        { label: 'max_calculations', value: 'unlimited' },
-        { label: 'can_export_pdf', value: 'true', isBoolean: true },
-        { label: 'can_use_api', value: 'true', isBoolean: true },
-        { label: 'support_level', value: 'priority' },
-        { label: 'team_members', value: '25' },
-      ]
-    }
-  ]);
-
+  // Use the imported mock data as the initial state
+  const [plans, setPlans] = useState(initialPlans);
   const [view, setView] = useState('list'); // 'list' | 'form'
   const [editingPlan, setEditingPlan] = useState(null);
 
@@ -68,10 +24,8 @@ const PlanFeatures = () => {
 
   const handleSavePlan = (savedPlan, originalName) => {
     if (originalName) {
-      // Edit existing
       setPlans(plans.map(p => p.name === originalName ? savedPlan : p));
     } else {
-      // Create new
       setPlans([...plans, savedPlan]);
     }
     setView('list');
@@ -127,7 +81,6 @@ const PlanFeatures = () => {
         </div>
       ))}
 
-      {/* New Plan Card */}
       <div 
         onClick={handleCreateNew}
         className="border-2 border-dashed border-gray-100 rounded-2xl p-8 flex flex-col items-center justify-center group cursor-pointer hover:border-blue-200 transition-colors min-h-[400px]"
@@ -138,34 +91,23 @@ const PlanFeatures = () => {
         <span className="text-gray-400 font-medium">New Plan</span>
       </div>
     </div>
-  )
+  );
 };
 
-export default PlanFeatures;
-
-
-
-
-
-// --- NEW COMPONENT: PLAN FORM ---
 function PlanForm({ initialData, onSave, onCancel }) {
   const isEdit = !!initialData;
-  
   const [name, setName] = useState(initialData?.name || '');
   const [type, setType] = useState(initialData?.tag || 'NORMAL');
   const [description, setDescription] = useState(initialData?.description || '');
   
-  // Initialize features or provide two empty rows by default
   const [features, setFeatures] = useState(
     initialData?.features?.map((f, i) => ({ id: i, label: f.label, value: f.value })) || 
-    [
-      { id: 0, label: '', value: '' },
-      { id: 1, label: '', value: '' }
-    ]
+    [{ id: 0, label: '', value: '' }]
   );
 
   const handleAddFeature = () => {
-    const newId = Math.max(...features.map(f => f.id)) + 1;
+    // Safer ID generation
+    const newId = features.length > 0 ? Math.max(...features.map(f => f.id)) + 1 : 0;
     setFeatures([...features, { id: newId, label: '', value: '' }]);
   };
 
@@ -178,9 +120,8 @@ function PlanForm({ initialData, onSave, onCancel }) {
   };
 
   const handleSubmit = () => {
-    // Basic formatting before save
     const cleanFeatures = features
-      .filter(f => f.label.trim() !== '') // remove empty rows
+      .filter(f => f.label.trim() !== '')
       .map(f => ({
         label: f.label,
         value: f.value,
@@ -241,7 +182,6 @@ function PlanForm({ initialData, onSave, onCancel }) {
 
       <div className="mb-8">
         <label className="block text-sm font-medium text-gray-500 mb-3">Features (key / value)</label>
-        
         <div className="space-y-3 mb-4">
           {features.map((feature) => (
             <div key={feature.id} className="flex gap-3">
@@ -295,3 +235,4 @@ function PlanForm({ initialData, onSave, onCancel }) {
   );
 }
 
+export default PlanFeatures;

@@ -1,17 +1,6 @@
 import React, { useState } from 'react';
 import { Search, Plus, Eye, CheckCircle, Ban, X, Heart, Bookmark, Trash2 } from 'lucide-react';
-
-// --- MOCK DATA ---
-const mockUsers = [
-  { id: 1, name: 'Karim Benali', initials: 'KB', email: 'karim@mail.com', status: 'Active', plan: 'Pro', subStatus: 'ACTIVE', joined: '2025-11-03' },
-  { id: 2, name: 'Sara Meziani', initials: 'SM', email: 'sara@corp.dz', status: 'Active', plan: 'Enterprise', subStatus: 'ACTIVE', joined: '2025-09-14' },
-  { id: 3, name: 'Amine Touati', initials: 'AT', email: 'amine@mail.com', status: 'Banned', plan: 'Free', subStatus: 'INACTIVE', joined: '2026-01-22' },
-  { id: 4, name: 'Lina Hadjadj', initials: 'LH', email: 'lina@archi.dz', status: 'Active', plan: 'Pro', subStatus: 'ACTIVE', joined: '2025-12-01' },
-  { id: 5, name: 'Yacine Oussad', initials: 'YO', email: 'yacine@build.com', status: 'Active', plan: 'Enterprise', subStatus: 'ACTIVE', joined: '2025-08-07' },
-  { id: 6, name: 'Nadia Belkadi', initials: 'NB', email: 'nadia@mail.com', status: 'Active', plan: 'Free', subStatus: 'INACTIVE', joined: '2026-02-11' },
-  { id: 7, name: 'Omar Rezig', initials: 'OR', email: 'omar@construct.dz', status: 'Suspended', plan: 'Pro', subStatus: 'ACTIVE', joined: '2025-10-30' },
-  { id: 8, name: 'Amira Chikh', initials: 'AC', email: 'amira@mail.com', status: 'Active', plan: 'Free', subStatus: 'INACTIVE', joined: '2026-03-01' },
-];
+import { mockUsers } from './mock.js'; // <-- Import the mock data here
 
 // Helper components for Badges to keep the table clean
 const StatusBadge = ({ status }) => {
@@ -36,16 +25,36 @@ const PlanBadge = ({ plan }) => {
 const getEndDate = (dateString) => {
   const date = new Date(dateString);
   date.setFullYear(date.getFullYear() + 1);
-  return date.toISOString().split('T');
+  return date.toISOString().split('T')[0];
 };
 
 export default function Users() {
+  // Initialize state with the imported mock data
+  const [users, setUsers] = useState(mockUsers);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
   const [activeTab, setActiveTab] = useState('Profile');
 
+  // Toggle Ban Status Function
+  const toggleBanStatus = (userId) => {
+    setUsers(prevUsers => prevUsers.map(user => {
+      if (user.id === userId) {
+        const isCurrentlyBanned = user.status === 'Banned' || user.status === 'Suspended';
+        const newStatus = isCurrentlyBanned ? 'Active' : 'Banned';
+        
+        // Update selectedUser if it's the one currently open in the drawer
+        if (selectedUser && selectedUser.id === userId) {
+          setSelectedUser({ ...user, status: newStatus });
+        }
+        
+        return { ...user, status: newStatus };
+      }
+      return user;
+    }));
+  };
+
   // Filter users based on search term
-  const filteredUsers = mockUsers.filter(user => 
+  const filteredUsers = users.filter(user => 
     user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -59,7 +68,7 @@ export default function Users() {
         <div className="flex justify-between items-center mb-6">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Users</h1>
-            <p className="text-gray-500 mt-1">{mockUsers.length} total accounts</p>
+            <p className="text-gray-500 mt-1">{users.length} total accounts</p>
           </div>
           <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2">
             <Plus className="w-4 h-4" /> Invite User
@@ -129,11 +138,17 @@ export default function Users() {
                         <Eye className="w-4 h-4" /> View
                       </button>
                       {user.status === 'Banned' || user.status === 'Suspended' ? (
-                        <button className="flex items-center gap-1 px-3 py-1.5 border border-green-200 text-green-600 rounded-lg hover:bg-green-50 text-xs font-medium">
+                        <button 
+                          onClick={() => toggleBanStatus(user.id)}
+                          className="flex items-center gap-1 px-3 py-1.5 border border-green-200 text-green-600 rounded-lg hover:bg-green-50 text-xs font-medium"
+                        >
                           <CheckCircle className="w-4 h-4" /> Unban
                         </button>
                       ) : (
-                        <button className="flex items-center gap-1 px-3 py-1.5 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 text-xs font-medium">
+                        <button 
+                          onClick={() => toggleBanStatus(user.id)}
+                          className="flex items-center gap-1 px-3 py-1.5 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 text-xs font-medium"
+                        >
                           <Ban className="w-4 h-4" /> Ban
                         </button>
                       )}
@@ -172,7 +187,12 @@ export default function Users() {
               </div>
             </div>
             <div className="flex flex-wrap gap-2 mt-4">
-              <span className="px-2 py-1 bg-green-50 text-green-600 rounded text-xs font-bold uppercase">{selectedUser.status}</span>
+              <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${
+                selectedUser.status === 'Active' ? 'bg-green-50 text-green-600' : 
+                selectedUser.status === 'Suspended' ? 'bg-yellow-50 text-yellow-600' : 'bg-red-50 text-red-600'
+              }`}>
+                {selectedUser.status}
+              </span>
               <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded text-xs font-bold uppercase">{selectedUser.plan}</span>
               <span className="px-2 py-1 bg-green-50 text-green-600 rounded text-xs font-bold uppercase">{selectedUser.subStatus}</span>
               <span className="px-2 py-1 bg-cyan-50 text-cyan-600 rounded text-xs font-bold uppercase">Normal</span>
@@ -226,7 +246,7 @@ export default function Users() {
                 {/* Status */}
                 <div>
                   <label className="block text-xs font-medium text-gray-400 mb-1">Status</label>
-                  <div className="w-full px-3 py-2 border border-gray-100 rounded-lg bg-gray-50/50 text-gray-900 text-sm">
+                  <div className="w-full px-3 py-2 border border-gray-100 rounded-lg bg-gray-50/50 text-gray-900 text-sm capitalize">
                     {selectedUser.status.toLowerCase()}
                   </div>
                 </div>
@@ -256,8 +276,19 @@ export default function Users() {
 
                 {/* Action Buttons */}
                 <div className="flex gap-3 pt-6 pb-4">
-                  <button className="flex items-center justify-center gap-2 px-4 py-2.5 border border-red-100 text-red-600 rounded-xl hover:bg-red-50 text-sm font-medium transition-colors w-fit pr-6">
-                    <Ban className="w-4 h-4" /> Ban User
+                  <button 
+                    onClick={() => toggleBanStatus(selectedUser.id)}
+                    className={`flex items-center justify-center gap-2 px-4 py-2.5 border rounded-xl text-sm font-medium transition-colors w-fit pr-6 ${
+                      selectedUser.status === 'Banned' || selectedUser.status === 'Suspended'
+                        ? 'border-green-100 text-green-600 hover:bg-green-50'
+                        : 'border-red-100 text-red-600 hover:bg-red-50'
+                    }`}
+                  >
+                    {selectedUser.status === 'Banned' || selectedUser.status === 'Suspended' ? (
+                      <><CheckCircle className="w-4 h-4" /> Unban User</>
+                    ) : (
+                      <><Ban className="w-4 h-4" /> Ban User</>
+                    )}
                   </button>
                   <button className="flex items-center justify-center gap-2 px-4 py-2.5 text-blue-600 rounded-xl hover:bg-blue-50 text-sm font-medium transition-colors w-fit pr-6">
                     <Trash2 className="w-4 h-4" /> Delete

@@ -1,16 +1,8 @@
 import React from 'react';
 import { Search, Edit2, Trash2, Plus, Save, X } from 'lucide-react';
-
+import { subscribers } from './mock.js'; // <-- Import the mock data here
 function Subscribers() {
-  const subscribers = [
-    { name: 'Karim Benali', email: 'karim@mail.com', plan: 'Pro', type: 'NORMAL', status: 'ACTIVE', start: '2025-11-03', end: '2026-11-03', init: 'KB' },
-    { name: 'Sara Meziani', email: 'sara@corp.dz', plan: 'Enterprise', type: 'COMPANY', status: 'ACTIVE', start: '2025-09-14', end: '2026-09-14', init: 'SM' },
-    { name: 'Amine Touati', email: 'amine@mail.com', plan: 'Free', type: 'NORMAL', status: 'INACTIVE', start: '2026-01-22', end: '-', init: 'AT' },
-    { name: 'Lina Hadjadj', email: 'lina@archi.dz', plan: 'Pro', type: 'NORMAL', status: 'ACTIVE', start: '2025-12-01', end: '2026-12-01', init: 'LH' },
-    { name: 'Yacine Oussad', email: 'yacine@build.com', plan: 'Enterprise', type: 'COMPANY', status: 'ACTIVE', start: '2025-08-07', end: '2026-08-07', init: 'YO' },
-    { name: 'Omar Rezig', email: 'omar@construct.dz', plan: 'Pro', type: 'NORMAL', status: 'ACTIVE', start: '2025-10-30', end: '2026-10-30', init: 'OR' },
-  ];
-
+ 
   return (
     <div className="space-y-6">
       {/* Search and Filter */}

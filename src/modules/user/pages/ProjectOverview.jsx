@@ -1,10 +1,9 @@
-// src/modules/user/pages/ProjectOverview.jsx
 import React from "react";
 import { Link } from "react-router-dom";
 import { Eye, ArrowRight, Hash, User, Calendar } from "lucide-react";
 
 const ProjectOverview = () => {
-  // بيانات ثابتة
+  
   const project = {
     id: "skyline-tower",
     name: "Skyline Tower",
@@ -12,7 +11,7 @@ const ProjectOverview = () => {
     manager: "Alex Morgan",
     dueDate: "Dec 2024",
     description: "The Skyline Tower is a flagship mixed-use development situated in the heart of the business district. This 45-story structure incorporates sustainable building practices, advanced structural engineering, and premium architectural finishes. The current phase focuses on core structural assessment and interior partition planning for the commercial levels.",
-    totalCalculations: 142,
+    totalCalculations: 143,
     activeCategories: 3,
   };
 
@@ -51,7 +50,7 @@ const ProjectOverview = () => {
 
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-6">
-      {/* رأس المشروع */}
+      
       <div className="mb-6">
         <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">{project.name}</h1>
         <div className="flex flex-wrap gap-4 text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -61,11 +60,11 @@ const ProjectOverview = () => {
         </div>
       </div>
 
-      {/* PROJECT OVERVIEW مع مستطيلين أفقيين يملأن العرض */}
+  
       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5 mb-8">
         <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-2">PROJECT OVERVIEW</h2>
         <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">{project.description}</p>
-        {/* المستطيلان الأفقيان */}
+        
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1 bg-slate-100 dark:bg-slate-700 rounded-lg px-4 py-3 text-center">
             <p className="text-xs text-slate-500 dark:text-slate-400">Total Calculations</p>
@@ -78,7 +77,7 @@ const ProjectOverview = () => {
         </div>
       </div>
 
-      {/* الفئات (نفسها) */}
+
       <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-4">Categories</h2>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         {categories.map((cat) => (
@@ -104,7 +103,7 @@ const ProjectOverview = () => {
         ))}
       </div>
 
-      {/* جدول آخر الحسابات */}
+    
       <div>
         <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-4">Recent Calculations</h2>
         <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-x-auto">

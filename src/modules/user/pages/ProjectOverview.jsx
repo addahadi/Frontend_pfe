@@ -11,7 +11,7 @@ const ProjectOverview = () => {
     manager: "Alex Morgan",
     dueDate: "Dec 2024",
     description: "The Skyline Tower is a flagship mixed-use development situated in the heart of the business district. This 45-story structure incorporates sustainable building practices, advanced structural engineering, and premium architectural finishes. The current phase focuses on core structural assessment and interior partition planning for the commercial levels.",
-    totalCalculations: 143,
+    totalCalculations: 142,
     activeCategories: 3,
   };
 

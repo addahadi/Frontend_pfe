@@ -170,7 +170,8 @@ export let saves = getInitialData('saves', defaultSaves);
 // Sync function to persist changes to localStorage
 export const syncToStorage = () => {
   saveToStorage('articles', articles);
-  saveToStorage('tags', tags);
+  // احفظ التاغات بدون count لأنه دائماً يُحسب من المقالات
+  saveToStorage('tags', tags.map(({ count, ...rest }) => rest));
   saveToStorage('likes', likes);
   saveToStorage('saves', saves);
 };

@@ -1,12 +1,12 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";   
-import { getTags, createArticle } from "../services/blog.service"; 
+import { getTags, createArticle, updateArticle } from "../services/blog.service"; 
 import {
   Save, Globe, ImageIcon, Bold, Italic, Underline, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
-  List, ListOrdered, Link2, Code, Quote, Undo2, Redo2,
+  List, ListOrdered, Link2, Quote, Undo2, Redo2,
   ChevronDown, X, Tag, Pilcrow,
   Heading1, Heading2, Heading3, Superscript, Subscript,
-  CheckCircle2,
+  CheckCircle2, ArrowLeft, Upload,
 } from "lucide-react";
 
 // ─── Lexical Core ─────────────────────────────────────────────────────────────
@@ -14,6 +14,8 @@ import {
   $getSelection, $isRangeSelection, $createParagraphNode,
   FORMAT_TEXT_COMMAND, FORMAT_ELEMENT_COMMAND,
   UNDO_COMMAND, REDO_COMMAND, $getRoot,
+ 
+  COMMAND_PRIORITY_EDITOR, createCommand,
 } from "lexical";
 
 // ─── Lexical React ────────────────────────────────────────────────────────────
@@ -41,14 +43,125 @@ import {
   INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND,
   REMOVE_LIST_COMMAND, $isListNode,
 } from "@lexical/list";
-import { CodeNode, CodeHighlightNode, $createCodeNode } from "@lexical/code";
+import { CodeNode, CodeHighlightNode } from "@lexical/code";
 import { AutoLinkNode, LinkNode, TOGGLE_LINK_COMMAND } from "@lexical/link";
+import {
+  DecoratorNode,
+} from "lexical";
 import { $setBlocksType }            from "@lexical/selection";
 import { $getNearestNodeOfType, mergeRegister } from "@lexical/utils";
 import { TRANSFORMERS }              from "@lexical/markdown";
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Toast Notification Component
+// Image Node for Lexical
+// ═══════════════════════════════════════════════════════════════════════════════
+export class ImageNode extends DecoratorNode {
+  static getType() { return "image"; }
+  static clone(node) { return new ImageNode(node.__src, node.__alt, node.__width, node.__key); }
+
+  constructor(src, alt = "", width = "100%", key) {
+    super(key);
+    this.__src   = src;
+    this.__alt   = alt;
+    this.__width = width;
+  }
+
+  static importJSON(data) {
+    return new ImageNode(data.src, data.alt, data.width);
+  }
+
+  exportJSON() {
+    return { type: "image", version: 1, src: this.__src, alt: this.__alt, width: this.__width };
+  }
+
+  // ↓ هذه الدالة هي الحل — بدونها $generateHtmlFromNodes لا يعرف كيف يحوّل
+  //   هذه العقدة إلى HTML، فيتجاهلها تمامًا ولا تظهر الصورة في صفحة العرض
+  exportDOM() {
+    const img = document.createElement("img");
+    img.setAttribute("src",   this.__src);
+    img.setAttribute("alt",   this.__alt);
+    img.style.maxWidth    = "100%";
+    img.style.width       = this.__width;
+    img.style.borderRadius = "0.5rem";
+    img.style.display     = "block";
+    img.style.margin      = "1rem 0";
+    return { element: img };
+  }
+
+  static importDOM() {
+    return {
+      img: () => ({
+        conversion: (domNode) => {
+          if (domNode instanceof HTMLImageElement) {
+            return {
+              node: new ImageNode(
+                domNode.getAttribute("src")   || "",
+                domNode.getAttribute("alt")   || "",
+                domNode.style.width           || "100%",
+              ),
+            };
+          }
+          return null;
+        },
+        priority: 0,
+      }),
+    };
+  }
+
+  createDOM() {
+    const span = document.createElement("span");
+    span.style.display = "block";
+    return span;
+  }
+
+  updateDOM() { return false; }
+
+  decorate() {
+    return (
+      <span contentEditable={false} style={{ display: "block", margin: "1rem 0", userSelect: "none" }}>
+        <img
+          src={this.__src}
+          alt={this.__alt}
+          style={{ maxWidth: "100%", width: this.__width, borderRadius: "0.5rem", display: "block" }}
+        />
+      </span>
+    );
+  }
+}
+
+export function $createImageNode(src, alt, width) {
+  return new ImageNode(src, alt, width);
+}
+
+// Insert image command
+export const INSERT_IMAGE_COMMAND = createCommand("INSERT_IMAGE_COMMAND");
+
+// ─── Image Plugin ─────────────────────────────────────────────────────────────
+function ImagePlugin() {
+  const [editor] = useLexicalComposerContext();
+  useEffect(() => {
+    return editor.registerCommand(
+      INSERT_IMAGE_COMMAND,
+      ({ src, alt, width }) => {
+        const imageNode = $createImageNode(src, alt, width);
+        editor.update(() => {
+          const selection = $getSelection();
+          if ($isRangeSelection(selection)) {
+            selection.insertNodes([imageNode]);
+          } else {
+            $getRoot().append(imageNode);
+          }
+        });
+        return true;
+      },
+      COMMAND_PRIORITY_EDITOR
+    );
+  }, [editor]);
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Toast Notification
 // ═══════════════════════════════════════════════════════════════════════════════
 const Toast = ({ message, type = "success", onClose }) => {
   useEffect(() => {
@@ -56,45 +169,26 @@ const Toast = ({ message, type = "success", onClose }) => {
     return () => clearTimeout(timer);
   }, [onClose]);
 
-  const styles = {
-    success: "bg-green-500",
-    draft:   "bg-blue-500",
-  };
+  const styles = { success: "bg-green-500", draft: "bg-blue-500" };
 
   return (
     <div
       className={`fixed bottom-6 right-6 z-[9999] flex items-center gap-3 px-5 py-3.5
                   rounded-2xl shadow-2xl text-white text-sm font-medium
-                  animate-[slideUp_0.3s_ease-out]
                   ${styles[type]}`}
       style={{ animation: "slideUp 0.3s ease-out" }}
     >
       <CheckCircle2 size={18} className="flex-shrink-0" />
       <span>{message}</span>
-      <button
-        onClick={onClose}
-        className="ml-2 opacity-70 hover:opacity-100 transition-opacity"
-      >
+      <button onClick={onClose} className="ml-2 opacity-70 hover:opacity-100 transition-opacity">
         <X size={15} />
       </button>
-
-      {/* Progress bar */}
       <div className="absolute bottom-0 left-0 h-1 rounded-b-2xl bg-white/30 w-full overflow-hidden">
-        <div
-          className="h-full bg-white/60 rounded-b-2xl"
-          style={{ animation: "shrink 3.5s linear forwards" }}
-        />
+        <div className="h-full bg-white/60 rounded-b-2xl" style={{ animation: "shrink 3.5s linear forwards" }} />
       </div>
-
       <style>{`
-        @keyframes slideUp {
-          from { opacity: 0; transform: translateY(20px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes shrink {
-          from { width: 100%; }
-          to   { width: 0%; }
-        }
+        @keyframes slideUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes shrink  { from { width:100%; } to { width:0%; } }
       `}</style>
     </div>
   );
@@ -105,7 +199,7 @@ const editorTheme = {
   heading: { h1: "editor-h1", h2: "editor-h2", h3: "editor-h3" },
   text: {
     bold: "font-bold", italic: "italic", underline: "underline",
-    strikethrough: "line-through", code: "editor-inline-code",
+    strikethrough: "line-through",
     superscript: "editor-superscript", subscript: "editor-subscript",
   },
   list: {
@@ -116,22 +210,12 @@ const editorTheme = {
   link: "editor-link", paragraph: "editor-paragraph",
 };
 
-const initialConfig = {
-  namespace: "ArticleEditor",
-  theme: editorTheme,
-  onError: (err) => console.error(err),
-  nodes: [
-    HeadingNode, QuoteNode, ListNode, ListItemNode,
-    CodeNode, CodeHighlightNode, AutoLinkNode, LinkNode,
-  ],
-};
-
 const URL_REGEX =
   /((https?:\/\/(www\.)?)|(www\.))[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_+.~#?&//=]*)/;
 const EMAIL_REGEX =
   /(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))/;
 const AUTO_LINK_MATCHERS = [
-  (text) => { const m = URL_REGEX.exec(text); if (!m) return null; const f = m[0]; return { index: m.index, length: f.length, text: f, url: f.startsWith("http") ? f : `https://${f}` }; },
+  (text) => { const m = URL_REGEX.exec(text);   if (!m) return null; const f = m[0]; return { index: m.index, length: f.length, text: f, url: f.startsWith("http") ? f : `https://${f}` }; },
   (text) => { const m = EMAIL_REGEX.exec(text); if (!m) return null; const f = m[0]; return { index: m.index, length: f.length, text: f, url: `mailto:${f}` }; },
 ];
 
@@ -143,7 +227,6 @@ const BLOCK_TYPES = {
   bullet:    { label: "Bullet List",   icon: <List        size={14} /> },
   number:    { label: "Numbered List", icon: <ListOrdered size={14} /> },
   quote:     { label: "Quote",         icon: <Quote       size={14} /> },
-  code:      { label: "Code Block",    icon: <Code        size={14} /> },
 };
 
 const Btn = ({ onClick, active, title, children, className = "" }) => (
@@ -161,6 +244,124 @@ const Btn = ({ onClick, active, title, children, className = "" }) => (
 const Sep = () => <div className="w-px h-5 bg-gray-200 mx-1 flex-shrink-0 self-center" />;
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Image Dialog (URL or file upload)
+// ═══════════════════════════════════════════════════════════════════════════════
+const ImageDialog = ({ onInsert, onClose }) => {
+  const [tab, setTab]     = useState("url"); // "url" | "upload"
+  const [url, setUrl]     = useState("");
+  const [alt, setAlt]     = useState("");
+  const [preview, setPreview] = useState(null);
+  const fileRef = useRef(null);
+
+  const handleFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const objUrl = URL.createObjectURL(file);
+    setPreview(objUrl);
+    setUrl(objUrl);
+  };
+
+  const handleInsert = () => {
+    if (!url.trim() && !preview) return;
+    onInsert({ src: url || preview, alt });
+  };
+
+  return (
+    <div className="fixed inset-0 z-[9998] flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4 animate-[popIn_0.2s_ease-out]">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-gray-900 font-bold text-base flex items-center gap-2">
+            <ImageIcon size={18} className="text-blue-500" /> Insert Image
+          </h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100">
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-xl">
+          {["url", "upload"].map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold capitalize transition-all
+                ${tab === t ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+            >
+              {t === "url" ? "URL" : "Upload File"}
+            </button>
+          ))}
+        </div>
+
+        {tab === "url" ? (
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">Image URL</label>
+              <input
+                autoFocus
+                type="url"
+                placeholder="https://example.com/image.jpg"
+                value={url}
+                onChange={(e) => { setUrl(e.target.value); setPreview(e.target.value); }}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+              />
+            </div>
+            {preview && (
+              <div className="rounded-xl overflow-hidden border border-gray-100 h-36 bg-gray-50 flex items-center justify-center">
+                <img src={preview} alt="preview" className="max-h-full max-w-full object-contain" onError={() => setPreview(null)} />
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <label
+              className="block border-2 border-dashed border-gray-200 rounded-xl h-36 cursor-pointer hover:border-blue-400 transition-colors flex flex-col items-center justify-center gap-2 text-gray-400 hover:text-blue-500"
+              onClick={() => fileRef.current?.click()}
+            >
+              {preview ? (
+                <img src={preview} alt="preview" className="max-h-full max-w-full object-contain rounded-xl" />
+              ) : (
+                <>
+                  <Upload size={22} />
+                  <span className="text-xs font-medium">Click to upload</span>
+                  <span className="text-xs opacity-60">PNG, JPG, WebP, GIF</span>
+                </>
+              )}
+            </label>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+          </div>
+        )}
+
+        <div className="mt-4">
+          <label className="text-xs font-semibold text-gray-500 mb-1 block">Alt Text <span className="font-normal text-gray-400">(optional)</span></label>
+          <input
+            type="text"
+            placeholder="Describe the image…"
+            value={alt}
+            onChange={(e) => setAlt(e.target.value)}
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+          />
+        </div>
+
+        <div className="flex gap-3 mt-5">
+          <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors">Cancel</button>
+          <button
+            onClick={handleInsert}
+            disabled={!url && !preview}
+            className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors disabled:opacity-40"
+          >
+            Insert Image
+          </button>
+        </div>
+      </div>
+      <style>{`
+        @keyframes popIn { from { opacity:0; transform:scale(0.92); } to { opacity:1; transform:scale(1); } }
+      `}</style>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Toolbar Plugin
 // ═══════════════════════════════════════════════════════════════════════════════
 function ToolbarPlugin() {
@@ -169,13 +370,13 @@ function ToolbarPlugin() {
   const [isItalic, setIsItalic]           = useState(false);
   const [isUnderline, setIsUnderline]     = useState(false);
   const [isStrike, setIsStrike]           = useState(false);
-  const [isCode, setIsCode]               = useState(false);
   const [isSuperscript, setIsSuperscript] = useState(false);
   const [isSubscript, setIsSubscript]     = useState(false);
   const [isLink, setIsLink]               = useState(false);
   const [blockType, setBlockType]         = useState("paragraph");
   const [showBlockMenu, setShowBlockMenu] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
+  const [showImageDialog, setShowImageDialog] = useState(false); // ← new
   const [linkUrl, setLinkUrl]               = useState("");
   const linkInputRef                        = useRef(null);
   const [align, setAlign]                   = useState("left");
@@ -187,7 +388,6 @@ function ToolbarPlugin() {
     setIsItalic(selection.hasFormat("italic"));
     setIsUnderline(selection.hasFormat("underline"));
     setIsStrike(selection.hasFormat("strikethrough"));
-    setIsCode(selection.hasFormat("code"));
     setIsSuperscript(selection.hasFormat("superscript"));
     setIsSubscript(selection.hasFormat("subscript"));
     const nodes = selection.getNodes();
@@ -227,7 +427,6 @@ function ToolbarPlugin() {
         if (type === "paragraph") $setBlocksType(selection, () => $createParagraphNode());
         else if (["h1","h2","h3"].includes(type)) $setBlocksType(selection, () => $createHeadingNode(type));
         else if (type === "quote") $setBlocksType(selection, () => $createQuoteNode());
-        else if (type === "code") $setBlocksType(selection, () => $createCodeNode());
       });
     }
     setShowBlockMenu(false);
@@ -243,10 +442,20 @@ function ToolbarPlugin() {
     setShowLinkDialog(false); setLinkUrl("");
   };
 
+  const handleImageInsert = ({ src, alt }) => {
+    editor.dispatchCommand(INSERT_IMAGE_COMMAND, { src, alt, width: "100%" });
+    setShowImageDialog(false);
+  };
+
   const currentBlock = BLOCK_TYPES[blockType] ?? BLOCK_TYPES.paragraph;
 
   return (
     <div className="relative">
+      {/* Image Dialog (portal-like, above everything) */}
+      {showImageDialog && (
+        <ImageDialog onInsert={handleImageInsert} onClose={() => setShowImageDialog(false)} />
+      )}
+
       <div className="flex flex-wrap items-center gap-0.5 px-2 py-1.5 bg-white border border-gray-200 border-b-0 rounded-t-xl">
         <Btn onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)} title="Undo"><Undo2 size={15} /></Btn>
         <Btn onClick={() => editor.dispatchCommand(REDO_COMMAND, undefined)} title="Redo"><Redo2 size={15} /></Btn>
@@ -274,7 +483,8 @@ function ToolbarPlugin() {
         <Btn onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "italic")}        active={isItalic}      title="Italic">      <Italic        size={15} /></Btn>
         <Btn onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "underline")}     active={isUnderline}   title="Underline">   <Underline     size={15} /></Btn>
         <Btn onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "strikethrough")} active={isStrike}      title="Strikethrough"><Strikethrough size={15} /></Btn>
-        <Btn onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "code")}          active={isCode}        title="Inline Code"> <Code          size={15} /></Btn>
+        {/* ── Image button replaces inline code ── */}
+        <Btn onClick={() => setShowImageDialog(true)} title="Insert Image"><ImageIcon size={15} /></Btn>
         <Btn onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "superscript")}   active={isSuperscript} title="Superscript"> <Superscript   size={15} /></Btn>
         <Btn onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "subscript")}     active={isSubscript}   title="Subscript">   <Subscript     size={15} /></Btn>
         <Sep />
@@ -324,12 +534,54 @@ function CharacterCountDisplay({ limit = 10000 }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Pre-fill Plugin — loads existing content when editing
+// ═══════════════════════════════════════════════════════════════════════════════
+function PreFillPlugin({ initialContent }) {
+  const [editor] = useLexicalComposerContext();
+  const didFill  = useRef(false);
+
+  useEffect(() => {
+    if (!initialContent || didFill.current) return;
+    try {
+      const parsed = JSON.parse(initialContent);
+      if (parsed?.root) {
+        const state = editor.parseEditorState(initialContent);
+        editor.setEditorState(state);
+        didFill.current = true;
+      }
+    } catch {
+      // not a valid Lexical JSON — leave blank
+    }
+  }, [editor, initialContent]);
+
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Main Article Editor
 // ═══════════════════════════════════════════════════════════════════════════════
-const ArticleEditor = () => {
+/**
+ * Props:
+ *   articleToEdit  — article object from AdminArticles (optional; null = create mode)
+ *   onClose        — callback to return to AdminArticles (optional)
+ */
+const ArticleEditor = ({ articleToEdit = null, onClose = null }) => {
+  const isEditMode = !!articleToEdit;
 
-  const [availableTags] = useState(getTags());
-  const [selectedTags, setSelectedTags] = useState([]);
+  const [availableTags] = useState(getTags()); 
+
+const [selectedTags, setSelectedTags] = useState(() => {
+  if (!isEditMode) return [];
+  const rawTags = articleToEdit.tag_ids ?? articleToEdit.tags ?? [];
+  const allTags = getTags();
+  // إذا كانت القيم IDs حقيقية موجودة في قائمة التاغات، استخدمها مباشرة
+  const areIds = rawTags.every((t) => allTags.some((tag) => tag.id === t));
+  if (areIds) return rawTags;
+  // وإلا حوّل الأسماء إلى IDs
+  return rawTags
+    .map((name) => allTags.find((tag) => tag.name === name)?.id)
+    .filter(Boolean);
+});
 
   const TagSelector = ({ options, selected, onChange }) => {
     const toggleTag = useCallback((id) => {
@@ -350,21 +602,17 @@ const ArticleEditor = () => {
     );
   };
 
-  const [title, setTitle]           = useState("");
-  const [excerpt, setExcerpt]       = useState("");
-  const [type, setType]             = useState("BLOG");
-  const [status, setStatus]         = useState("DRAFT");
-  const [coverImage, setCoverImage] = useState(null);
+  const [title, setTitle]           = useState(isEditMode ? articleToEdit.title       : "");
+  const [excerpt, setExcerpt]       = useState(isEditMode ? (articleToEdit.excerpt ?? articleToEdit.description ?? "") : "");
+  const [type, setType]             = useState(isEditMode ? articleToEdit.type        : "BLOG");
+  const [status, setStatus]         = useState(isEditMode ? articleToEdit.status      : "DRAFT");
+  const [coverImage, setCoverImage] = useState(isEditMode ? articleToEdit.cover_img   : null);
   const [editorState, setEditorState] = useState(null);
   const [wordCount, setWordCount]   = useState(0);
   const [isSaving, setIsSaving]     = useState(false);
+  const [toast, setToast]           = useState(null);
 
-  // ── Toast state ──
-  const [toast, setToast] = useState(null); // { message, type }
-
-  const showToast = (message, type = "success") => {
-    setToast({ message, type });
-  };
+  const showToast = (message, type = "success") => setToast({ message, type });
 
   const slug = title.trim().toLowerCase()
     .replace(/[^\w\s-]/g, "")
@@ -398,8 +646,11 @@ const ArticleEditor = () => {
       content: editorState ? JSON.stringify(editorState.toJSON()) : "",
     };
 
-    const savedArticle = createArticle(payload);
-    console.log("Saved:", savedArticle);
+    if (isEditMode) {
+      updateArticle(articleToEdit.article_id, payload);
+    } else {
+      createArticle(payload);
+    }
 
     setIsSaving(false);
 
@@ -407,7 +658,7 @@ const ArticleEditor = () => {
       setStatus("PUBLISHED");
       showToast("🎉 Article published successfully!", "success");
     } else {
-      showToast("📝 Draft saved successfully!", "draft");
+      showToast(`📝 Draft ${isEditMode ? "updated" : "saved"} successfully!`, "draft");
     }
   };
 
@@ -415,18 +666,22 @@ const ArticleEditor = () => {
     `px-4 py-1.5 text-xs font-semibold rounded-lg border-2 transition-all duration-150 select-none
      ${active ? colorClass : "border-gray-200 text-gray-400 hover:border-gray-300"}`;
 
+  // Build the Lexical initialConfig (include ImageNode)
+  const initialConfig = {
+    namespace: "ArticleEditor",
+    theme: editorTheme,
+    onError: (err) => console.error(err),
+    nodes: [
+      HeadingNode, QuoteNode, ListNode, ListItemNode,
+      CodeNode, CodeHighlightNode, AutoLinkNode, LinkNode,
+      ImageNode, // ← new
+    ],
+  };
+
   return (
     <>
-      {/* Toast Notification */}
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
-      {/* Editor Styles */}
       <style>{`
         .editor-h1         { font-size:2rem;   font-weight:700; color:#111827; margin:1rem 0 .5rem; }
         .editor-h2         { font-size:1.5rem; font-weight:700; color:#1f2937; margin:.75rem 0 .4rem; }
@@ -436,8 +691,6 @@ const ArticleEditor = () => {
         .editor-code-block { display:block; background:#1e1e2e; color:#cdd6f4; font-family:monospace;
                              font-size:.85rem; padding:1rem 1.25rem; border-radius:.75rem; margin:.75rem 0;
                              white-space:pre; overflow-x:auto; }
-        .editor-inline-code{ background:#f3f4f6; color:#dc2626; font-family:monospace; font-size:.85em;
-                             padding:.1em .35em; border-radius:.25rem; }
         .editor-ul         { list-style-type:disc;    padding-left:1.5rem; margin:.5rem 0; }
         .editor-ol         { list-style-type:decimal; padding-left:1.5rem; margin:.5rem 0; }
         .editor-listitem   { margin:.2rem 0; }
@@ -452,12 +705,32 @@ const ArticleEditor = () => {
 
       <div className="min-h-screen bg-gray-50">
         <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+
+          {/* ── Back button when in edit mode ── */}
+          {isEditMode && onClose && (
+            <button
+              onClick={onClose}
+              className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-800 mb-6 transition-colors group"
+            >
+              <ArrowLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
+              Back to Articles
+            </button>
+          )}
+
+          {/* ── Edit mode banner ── */}
+          {isEditMode && (
+            <div className="mb-6 flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-700">
+              <span className="font-semibold">Editing:</span>
+              <span className="truncate font-medium text-blue-900">{articleToEdit.title}</span>
+              <span className="ml-auto text-xs text-blue-400 font-mono">{articleToEdit.article_id}</span>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
 
             {/* LEFT — Editor */}
             <div className="lg:col-span-2 space-y-5">
 
-              {/* Title */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Title</label>
                 <input type="text" value={title} onChange={(e) => setTitle(e.target.value)}
@@ -467,7 +740,6 @@ const ArticleEditor = () => {
                              text-lg font-medium placeholder-gray-400 transition-shadow" />
               </div>
 
-              {/* Slug */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">
                   Slug <span className="font-normal text-gray-400 text-xs">(auto-generated)</span>
@@ -478,7 +750,6 @@ const ArticleEditor = () => {
                 </div>
               </div>
 
-              {/* Excerpt */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Excerpt</label>
                 <textarea value={excerpt} onChange={(e) => setExcerpt(e.target.value)}
@@ -515,6 +786,9 @@ const ArticleEditor = () => {
                       <AutoLinkPlugin matchers={AUTO_LINK_MATCHERS} />
                       <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
                       <OnChangePlugin onChange={handleEditorChange} />
+                      <ImagePlugin />
+                      {/* Load existing content when in edit mode */}
+                      {isEditMode && <PreFillPlugin initialContent={articleToEdit.content} />}
                     </div>
                     <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-t border-gray-100 rounded-b-xl text-xs text-gray-400">
                       <span>{wordCount} words</span>
@@ -533,15 +807,15 @@ const ArticleEditor = () => {
                       <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                     </svg>
                   ) : <Save size={16} />}
-                  Save Draft
+                  {isEditMode ? "Update Draft" : "Save Draft"}
                 </button>
 
                 <button onClick={() => handleSave(true)} disabled={isSaving}
                   className="flex items-center gap-2 border-2 border-green-500 text-green-600 px-5 py-2.5 rounded-xl font-medium hover:bg-green-50 active:scale-95 transition-all disabled:opacity-60">
-                  <Globe size={16} /> Publish
+                  <Globe size={16} /> {isEditMode ? "Update & Publish" : "Publish"}
                 </button>
 
-                <button className="flex items-center gap-2 text-gray-500 px-5 py-2.5 rounded-xl font-medium hover:bg-gray-100 active:scale-95 transition-all">
+                <button onClick={onClose ?? (() => {})} className="flex items-center gap-2 text-gray-500 px-5 py-2.5 rounded-xl font-medium hover:bg-gray-100 active:scale-95 transition-all">
                   Cancel
                 </button>
               </div>
@@ -550,7 +824,6 @@ const ArticleEditor = () => {
             {/* RIGHT — Sidebar */}
             <div className="space-y-5">
 
-              {/* Metadata */}
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-5">
                 <h3 className="text-xs font-bold text-gray-400 tracking-widest uppercase">Metadata</h3>
                 <div>
@@ -573,7 +846,6 @@ const ArticleEditor = () => {
                 </div>
               </div>
 
-              {/* Tags */}
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
                 <div className="flex items-center gap-2 mb-4">
                   <Tag size={14} className="text-gray-400" />
@@ -582,7 +854,6 @@ const ArticleEditor = () => {
                 <TagSelector options={availableTags} selected={selectedTags} onChange={setSelectedTags} />
               </div>
 
-              {/* Cover Image */}
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
                 <h3 className="text-xs font-bold text-gray-400 tracking-widest uppercase mb-4">Cover Image</h3>
                 <input type="file" accept="image/*" id="cover-upload" className="hidden" onChange={handleImageChange} />
@@ -610,12 +881,17 @@ const ArticleEditor = () => {
                 )}
               </div>
 
-              {/* Info */}
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-2 text-xs text-gray-500">
                 <h3 className="text-xs font-bold text-gray-400 tracking-widest uppercase mb-3">Info</h3>
                 <div className="flex justify-between"><span>Words</span><span className="font-medium text-gray-700">{wordCount}</span></div>
                 <div className="flex justify-between"><span>Reading time</span><span className="font-medium text-gray-700">~{Math.max(1, Math.round(wordCount / 200))} min</span></div>
                 <div className="flex justify-between"><span>Tags</span><span className="font-medium text-gray-700">{selectedTags.length}</span></div>
+                {isEditMode && (
+                  <div className="flex justify-between pt-1 border-t border-gray-100 mt-1">
+                    <span>Article ID</span>
+                    <span className="font-mono text-gray-400 text-[10px]">{articleToEdit.article_id}</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

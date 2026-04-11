@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect,  } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   Twitter,
@@ -23,6 +23,7 @@ import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { ListNode, ListItemNode } from "@lexical/list";
 import { CodeNode, CodeHighlightNode } from "@lexical/code";
 import { AutoLinkNode, LinkNode } from "@lexical/link";
+import { ImageNode } from "./ArticleEditor"; // ← import the custom ImageNode
 
 // ── Lexical JSON detector ────────────────────────────────────────────────────
 const isLexicalJson = (content) => {
@@ -35,33 +36,43 @@ const isLexicalJson = (content) => {
 };
 
 // ── Hook: converts raw content (JSON or HTML) → HTML string ─────────────────
+// Fix: move setState into a microtask / setTimeout so it never fires
+// synchronously inside the effect body, eliminating both "cascading setState"
+// warnings while keeping the conversion logic unchanged.
 const useRenderedContent = (rawContent) => {
   const [html, setHtml] = useState("");
 
   useEffect(() => {
     if (!rawContent) return;
 
-    // Plain HTML — use directly
+    // Plain HTML — defer the setState so it isn't synchronous in the effect
     if (!isLexicalJson(rawContent)) {
-      setHtml(rawContent);
-      return;
+      const id = setTimeout(() => setHtml(rawContent), 0);
+      return () => clearTimeout(id);
     }
 
-    // Lexical JSON — convert to HTML
+    // Lexical JSON — convert to HTML (includes ImageNode so <img> tags appear)
     const editor = createEditor({
       nodes: [
         HeadingNode, QuoteNode,
         ListNode, ListItemNode,
         CodeNode, CodeHighlightNode,
         AutoLinkNode, LinkNode,
+        ImageNode, // ← required so the serialiser knows about image nodes
       ],
     });
 
     const parsed = editor.parseEditorState(rawContent);
     editor.setEditorState(parsed);
+
+    // $generateHtmlFromNodes is synchronous; defer the setState call
+    let html = "";
     editor.read(() => {
-      setHtml($generateHtmlFromNodes(editor, null));
+      html = $generateHtmlFromNodes(editor, null);
     });
+
+    const id = setTimeout(() => setHtml(html), 0);
+    return () => clearTimeout(id);
   }, [rawContent]);
 
   return html;
@@ -69,20 +80,17 @@ const useRenderedContent = (rawContent) => {
 
 // ── Helper Functions ─────────────────────────────────────────────────────────
 
-const fmtDate = (iso) => {
-  return new Date(iso).toLocaleDateString("en-GB", {
+const fmtDate = (iso) =>
+  new Date(iso).toLocaleDateString("en-GB", {
     day: "2-digit",
     month: "short",
     year: "numeric",
   });
-};
 
 const estimateReadTime = (content) => {
-  const wordsPerMinute = 200;
-  // Strip HTML tags for accurate word count
   const text = content.replace(/<[^>]*>/g, " ");
   const wordCount = text.split(/\s+/).filter(Boolean).length;
-  return Math.max(1, Math.ceil(wordCount / wordsPerMinute));
+  return Math.max(1, Math.ceil(wordCount / 200));
 };
 
 const getTagColor = (tagName) => {
@@ -104,7 +112,6 @@ const getTagColor = (tagName) => {
 
 const Hero = ({ article, likesCount, isLiked, isSaved, onLike, onSave }) => (
   <div className="relative h-[300px] md:h-[400px] lg:h-[450px] rounded-xl overflow-hidden mb-8 shadow-lg">
-    {/* Background Image */}
     <div
       className="absolute inset-0 bg-cover bg-center"
       style={{ backgroundImage: `url(${article.cover_img})` }}
@@ -112,7 +119,6 @@ const Hero = ({ article, likesCount, isLiked, isSaved, onLike, onSave }) => (
       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-black/30" />
     </div>
 
-    {/* Back Button */}
     <Link
       to="/articles"
       className="absolute top-4 left-4 p-2 bg-white/20 backdrop-blur-sm rounded-full text-white hover:bg-white/30 transition-colors z-10"
@@ -120,9 +126,7 @@ const Hero = ({ article, likesCount, isLiked, isSaved, onLike, onSave }) => (
       <ChevronLeft size={20} />
     </Link>
 
-    {/* Content */}
     <div className="relative h-full flex flex-col justify-end p-6 md:p-10">
-      {/* Category Badge */}
       <div className="flex items-center gap-2 mb-4">
         <span className="inline-flex w-fit items-center px-3 py-1 rounded-full bg-blue-600 text-white text-xs font-semibold uppercase tracking-wider">
           {article.type}
@@ -134,12 +138,10 @@ const Hero = ({ article, likesCount, isLiked, isSaved, onLike, onSave }) => (
         )}
       </div>
 
-      {/* Title */}
       <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold text-white max-w-3xl leading-tight mb-4">
         {article.title}
       </h1>
 
-      {/* Meta Info */}
       <div className="flex flex-wrap items-center gap-4 text-white/90">
         <div className="flex items-center gap-2 text-sm">
           <Calendar size={14} />
@@ -157,14 +159,11 @@ const Hero = ({ article, likesCount, isLiked, isSaved, onLike, onSave }) => (
         </div>
       </div>
 
-      {/* Action Buttons */}
       <div className="absolute top-4 right-4 flex items-center gap-2">
         <button
           onClick={onLike}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-full backdrop-blur-sm transition-all ${
-            isLiked
-              ? "bg-red-500 text-white"
-              : "bg-white/20 text-white hover:bg-white/30"
+            isLiked ? "bg-red-500 text-white" : "bg-white/20 text-white hover:bg-white/30"
           }`}
         >
           <Heart size={16} className={isLiked ? "fill-current" : ""} />
@@ -173,9 +172,7 @@ const Hero = ({ article, likesCount, isLiked, isSaved, onLike, onSave }) => (
         <button
           onClick={onSave}
           className={`p-2 rounded-full backdrop-blur-sm transition-all ${
-            isSaved
-              ? "bg-yellow-500 text-white"
-              : "bg-white/20 text-white hover:bg-white/30"
+            isSaved ? "bg-yellow-500 text-white" : "bg-white/20 text-white hover:bg-white/30"
           }`}
         >
           <Bookmark size={18} className={isSaved ? "fill-current" : ""} />
@@ -188,18 +185,15 @@ const Hero = ({ article, likesCount, isLiked, isSaved, onLike, onSave }) => (
   </div>
 );
 
-// ── ArticleContent — THE FIXED COMPONENT ────────────────────────────────────
 const ArticleContent = ({ article }) => {
   const html = useRenderedContent(article.content);
 
   return (
     <div className="prose max-w-none">
-      {/* Excerpt as intro */}
       <p className="text-base md:text-lg text-gray-600 italic leading-relaxed mb-6 border-l-4 border-blue-500 pl-4 bg-blue-50/50 py-2 pr-4 rounded-r-lg">
         {article.excerpt}
       </p>
 
-      {/* Main content — always rendered as HTML */}
       <div
         className="text-gray-700 leading-relaxed text-sm md:text-base
           [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-gray-900 [&_h1]:mt-8 [&_h1]:mb-3
@@ -218,7 +212,8 @@ const ArticleContent = ({ article }) => {
           [&_pre]:overflow-x-auto [&_pre]:my-4 [&_pre]:text-sm
           [&_a]:text-blue-600 [&_a]:underline [&_a]:hover:text-blue-800
           [&_strong]:font-bold [&_strong]:text-gray-900
-          [&_em]:italic"
+          [&_em]:italic
+          [&_img]:max-w-full [&_img]:rounded-lg [&_img]:my-4 [&_img]:block"
         dangerouslySetInnerHTML={{ __html: html }}
       />
     </div>
@@ -236,9 +231,7 @@ const TagList = ({ tags }) => (
         <Link
           key={tagId}
           to={`/articles?tag=${tagId}`}
-          className={`px-3 py-1 rounded-full text-xs font-medium border transition-all hover:shadow-sm ${getTagColor(
-            tagName
-          )}`}
+          className={`px-3 py-1 rounded-full text-xs font-medium border transition-all hover:shadow-sm ${getTagColor(tagName)}`}
         >
           {tagName}
         </Link>
@@ -249,7 +242,6 @@ const TagList = ({ tags }) => (
 
 const RelatedArticles = ({ articles, currentSlug }) => {
   const related = articles.filter((a) => a.slug !== currentSlug).slice(0, 3);
-
   if (related.length === 0) return null;
 
   return (
@@ -278,9 +270,7 @@ const RelatedArticles = ({ articles, currentSlug }) => {
                 <h4 className="text-sm font-semibold text-gray-900 mt-0.5 group-hover:text-blue-700 transition-colors line-clamp-2">
                   {item.title}
                 </h4>
-                <p className="text-xs text-gray-400 mt-1">
-                  {fmtDate(item.created_at)}
-                </p>
+                <p className="text-xs text-gray-400 mt-1">{fmtDate(item.created_at)}</p>
               </div>
             </div>
           </Link>
@@ -292,7 +282,6 @@ const RelatedArticles = ({ articles, currentSlug }) => {
 
 const PopularTags = () => {
   const allTags = getTags().sort((a, b) => b.count - a.count).slice(0, 8);
-
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
       <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
@@ -304,9 +293,7 @@ const PopularTags = () => {
           <Link
             key={tag.id}
             to={`/articles?tag=${tag.id}`}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all hover:shadow-sm ${getTagColor(
-              tag.name
-            )}`}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all hover:shadow-sm ${getTagColor(tag.name)}`}
           >
             {tag.name}
             <span className="ml-1.5 opacity-60">({tag.count})</span>
@@ -319,10 +306,7 @@ const PopularTags = () => {
 
 const ShareSection = ({ title }) => {
   const shareUrl = typeof window !== "undefined" ? window.location.href : "";
-
-  const copyLink = () => {
-    navigator.clipboard.writeText(shareUrl);
-  };
+  const copyLink = () => navigator.clipboard.writeText(shareUrl);
 
   return (
     <div className="border-t border-gray-200 pt-6 mt-8">
@@ -363,22 +347,23 @@ const ShareSection = ({ title }) => {
 
 const ArticleView = () => {
   const { id } = useParams();
-  const [article, setArticle] = useState(null);
+
+  // Fix warning 2: initialise loading as true so we never call setLoading(true)
+  // synchronously inside an effect body.
+  const [loading, setLoading]       = useState(true);
+  const [article, setArticle]       = useState(null);
   const [allArticles, setAllArticles] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [liked, setLiked] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [liked, setLiked]           = useState(false);
+  const [saved, setSaved]           = useState(false);
   const [likesCount, setLikesCount] = useState(0);
 
   useEffect(() => {
-    setLoading(true);
-
+    // `loading` is already true from initial state — no synchronous setState here
     const timer = setTimeout(() => {
       const published = getPublishedArticles();
       setAllArticles(published);
 
       const found = published.find((a) => a.slug === id || a.article_id === id);
-
       if (found) {
         setArticle(found);
         setLikesCount(getLikesCount(found.article_id));
@@ -394,13 +379,13 @@ const ArticleView = () => {
 
   const handleLike = () => {
     if (!article) return;
-    setLiked(!liked);
+    setLiked((prev) => !prev);
     setLikesCount((prev) => (liked ? prev - 1 : prev + 1));
   };
 
   const handleSave = () => {
     if (!article) return;
-    setSaved(!saved);
+    setSaved((prev) => !prev);
   };
 
   if (loading) {
@@ -418,12 +403,8 @@ const ArticleView = () => {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">
-            Article Not Found
-          </h2>
-          <p className="text-gray-500 mb-4">
-            The article you're looking for doesn't exist.
-          </p>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Article Not Found</h2>
+          <p className="text-gray-500 mb-4">The article you're looking for doesn't exist.</p>
           <Link
             to="/articles"
             className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium"
@@ -459,10 +440,7 @@ const ArticleView = () => {
 
           <div className="lg:col-span-1">
             <div className="sticky top-6 space-y-6">
-              <RelatedArticles
-                articles={allArticles}
-                currentSlug={article.slug}
-              />
+              <RelatedArticles articles={allArticles} currentSlug={article.slug} />
               <PopularTags />
             </div>
           </div>

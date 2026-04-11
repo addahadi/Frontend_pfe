@@ -21,6 +21,16 @@ const decrementTagCount = (tagId) => {
   const tag = tags.find((t) => t.id === tagId);
   if (tag && tag.count > 0) tag.count -= 1;
 }; 
+ 
+export const getTagsWithCount = () => {
+  return tags.map((tag) => ({
+    ...tag,
+    count: articles.filter(
+      (a) => Array.isArray(a.tags) && a.tags.includes(tag.id)
+    ).length,
+  }));
+};
+ 
 
 export const isLexicalJson = (content) => {
   try {
@@ -170,7 +180,12 @@ export const getArticlesWithDetails = () => {
 // ─── Tag Services ───────────────────────────────────────────────────────────
 
 export const getTags = () => {
-  return tags;
+  return tags.map((tag) => ({
+    ...tag,
+    count: articles.filter(
+      (a) => Array.isArray(a.tags) && a.tags.includes(tag.id)
+    ).length,
+  }));
 };
 
 export const getTagName = (tagId) => {

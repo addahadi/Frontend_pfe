@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { deleteArticle, updateArticle } from "../services/blog.service"; 
 import { getArticlesWithDetails } from "../services/blog.service";
 import { HeartIcon, BookmarkIcon, EditIcon, ArchiveIcon, TrashIcon, PublishIcon, SearchIcon } from "../components/component";
+import ArticleEditor from "./ArticleEditor"; // ← import editor
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Confirm Delete Dialog
@@ -9,16 +10,8 @@ import { HeartIcon, BookmarkIcon, EditIcon, ArchiveIcon, TrashIcon, PublishIcon,
 const ConfirmDialog = ({ article, onConfirm, onCancel }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-        onClick={onCancel}
-      />
-
-      {/* Dialog Box */}
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onCancel} />
       <div className="relative bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm mx-4 animate-[popIn_0.2s_ease-out]">
-        
-        {/* Icon */}
         <div className="flex items-center justify-center w-12 h-12 bg-red-100 rounded-full mx-auto mb-4">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="3 6 5 6 21 6" />
@@ -27,38 +20,15 @@ const ConfirmDialog = ({ article, onConfirm, onCancel }) => {
             <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
           </svg>
         </div>
-
-        {/* Text */}
-        <h3 className="text-center text-gray-900 font-bold text-base mb-1">
-          Delete Article?
-        </h3>
-        <p className="text-center text-gray-500 text-sm mb-1">
-          You are about to delete:
-        </p>
-        <p className="text-center text-gray-800 font-semibold text-sm mb-5 px-2 truncate">
-          "{article.title}"
-        </p>
-        <p className="text-center text-red-500 text-xs mb-6">
-          This action cannot be undone.
-        </p>
-
-        {/* Buttons */}
+        <h3 className="text-center text-gray-900 font-bold text-base mb-1">Delete Article?</h3>
+        <p className="text-center text-gray-500 text-sm mb-1">You are about to delete:</p>
+        <p className="text-center text-gray-800 font-semibold text-sm mb-5 px-2 truncate">"{article.title}"</p>
+        <p className="text-center text-red-500 text-xs mb-6">This action cannot be undone.</p>
         <div className="flex gap-3">
-          <button
-            onClick={onCancel}
-            className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium text-white bg-red-500 hover:bg-red-600 transition-colors"
-          >
-            Yes, Delete
-          </button>
+          <button onClick={onCancel} className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors">Cancel</button>
+          <button onClick={onConfirm} className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium text-white bg-red-500 hover:bg-red-600 transition-colors">Yes, Delete</button>
         </div>
       </div>
-
       <style>{`
         @keyframes popIn {
           from { opacity: 0; transform: scale(0.92); }
@@ -100,11 +70,12 @@ const StatusBadge = ({ status }) => {
 // Main Component
 // ═══════════════════════════════════════════════════════════════════════════════
 const AdminArticles = () => {
-  const [search, setSearch]             = useState("");
-  const [typeFilter, setTypeFilter]     = useState("All");
-  const [statusFilter, setStatusFilter] = useState("All");
-  const [articles, setArticles]         = useState(getArticlesWithDetails());
+  const [search, setSearch]               = useState("");
+  const [typeFilter, setTypeFilter]       = useState("All");
+  const [statusFilter, setStatusFilter]   = useState("All");
+  const [articles, setArticles]           = useState(getArticlesWithDetails());
   const [confirmTarget, setConfirmTarget] = useState(null);
+  const [editingArticle, setEditingArticle] = useState(null); // ← track article being edited
 
   const filtered = articles.filter((a) => {
     const matchSearch = a.title.toLowerCase().includes(search.toLowerCase());
@@ -124,6 +95,22 @@ const AdminArticles = () => {
     updateArticle(article.article_id, { status: newStatus });
     setArticles(getArticlesWithDetails());
   };
+
+  // Called by ArticleEditor when the user saves/publishes or cancels
+  const handleEditorClose = () => {
+    setEditingArticle(null);
+    setArticles(getArticlesWithDetails()); // refresh list after potential edits
+  };
+
+  // ── If editing, render the editor fullscreen ──
+  if (editingArticle) {
+    return (
+      <ArticleEditor
+        articleToEdit={editingArticle}
+        onClose={handleEditorClose}
+      />
+    );
+  }
 
   return (
     <div className="w-full bg-white rounded-xl shadow-sm font-sans">
@@ -226,7 +213,11 @@ const AdminArticles = () => {
               </td>
               <td className="px-4 py-4">
                 <div className="flex items-center gap-4">
-                  <button className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-colors cursor-pointer whitespace-nowrap">
+                  {/* ── Edit button now opens the editor ── */}
+                  <button
+                    onClick={() => setEditingArticle(article)}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-colors cursor-pointer whitespace-nowrap"
+                  >
                     <EditIcon /> Edit
                   </button>
 
@@ -246,7 +237,6 @@ const AdminArticles = () => {
                     </button>
                   )}
 
-                  {/* Delete — opens confirm dialog */}
                   <button
                     onClick={() => setConfirmTarget(article)}
                     className="inline-flex items-center justify-center w-10 h-7 rounded-md text-red-500 bg-white border border-red-200 hover:bg-red-50 hover:border-red-400 transition-colors cursor-pointer flex-shrink-0"

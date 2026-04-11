@@ -2,9 +2,13 @@ import React, { useState, useRef, useEffect } from "react";
 import "./chatbot.css";
 
 export default function Chatbot() {
-  const [messages, setMessages] = useState([
-    { type: "bot", text: "👷‍♂️ مرحبًا! اسألني عن البناء..." },
-  ]);
+  const [isOpen, setIsOpen] = useState(false);
+  const [messages, setMessages] = useState(() => {
+    const saved = localStorage.getItem("chatbot_messages");
+    return saved
+      ? JSON.parse(saved)
+      : [{ type: "bot", text: "👷‍♂️ مرحبًا! اسألني عن البناء..." }];
+  });
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   const [lang, setLang] = useState("ar");
@@ -13,6 +17,8 @@ export default function Chatbot() {
   const messagesEndRef = useRef(null);
   const offset = useRef({ x: 0, y: 0 });
 
+  const API_URL = "http://localhost:3000/api";
+
   const quickQuestions = [
     "كم نسبة خلط الاسمنت؟",
     "What is cement ratio?",
@@ -20,9 +26,33 @@ export default function Chatbot() {
     "Standard door size?",
   ];
 
+  // 🧠 كشف اللغة
   const detectLanguage = (value) =>
     /[\u0600-\u06FF]/.test(value) ? "ar" : "en";
 
+  // 📡 استقبال event من Layout
+  useEffect(() => {
+    const openHandler = () => setIsOpen(true);
+    window.addEventListener("open-chatbot", openHandler);
+
+    return () => {
+      window.removeEventListener("open-chatbot", openHandler);
+    };
+  }, []);
+
+  // 💾 حفظ الرسائل
+  useEffect(() => {
+    localStorage.setItem("chatbot_messages", JSON.stringify(messages));
+  }, [messages]);
+
+  // 📜 auto scroll
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+    });
+  }, [messages, loading]);
+
+  // 🚀 إرسال الرسالة
   const sendMessage = async (msg = text) => {
     if (!msg.trim() || loading) return;
 
@@ -34,7 +64,10 @@ export default function Chatbot() {
     setLoading(true);
 
     try {
-      const res = await fetch("http://localhost:3000/api/expert", {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+
+      const res = await fetch(`${API_URL}/expert`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -43,32 +76,34 @@ export default function Chatbot() {
           user_message: msg,
           user_id: "guest",
         }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeout);
 
       const data = await res.json();
 
-      setTimeout(() => {
-        setMessages((prev) => [
-          ...prev,
-          {
-            type: "bot",
-            text: data.reply || "No response received.",
-          },
-        ]);
-        setLoading(false);
-      }, 700);
+      setMessages((prev) => [
+        ...prev,
+        {
+          type: "bot",
+          text: data.reply || "⚠️ No response from server",
+        },
+      ]);
     } catch (error) {
       setMessages((prev) => [
         ...prev,
         {
           type: "bot",
-          text: "❌ Error connecting to server",
+          text: "❌ Server error or timeout",
         },
       ]);
+    } finally {
       setLoading(false);
     }
   };
 
+  // 🖱️ Drag
   const startDrag = (e) => {
     if (!chatbotRef.current) return;
 
@@ -93,17 +128,17 @@ export default function Chatbot() {
     document.onmouseup = null;
   };
 
+  // 🧹 مسح المحادثة
   const clearMessages = () => {
-    setMessages([
+    const initial = [
       { type: "bot", text: "👷‍♂️ مرحبًا! اسألني عن البناء..." },
-    ]);
+    ];
+    setMessages(initial);
+    localStorage.removeItem("chatbot_messages");
   };
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({
-      behavior: "smooth",
-    });
-  }, [messages, loading]);
+  // ❌ إذا مغلق لا يظهر
+  if (!isOpen) return null;
 
   return (
     <div
@@ -114,35 +149,29 @@ export default function Chatbot() {
       {/* Header */}
       <div className="header" onMouseDown={startDrag}>
         <span>🏗️ AI Construction</span>
-        <button
-          className="clear-btn"
-          onClick={clearMessages}
-          title="Clear chat"
-        >
-          🗑️
-        </button>
+
+        <div className="header-actions">
+          <button onClick={clearMessages} title="Clear">
+            🗑️
+          </button>
+          <button onClick={() => setIsOpen(false)}>✖</button>
+        </div>
       </div>
 
       {/* Quick Questions */}
       <div className="quick">
-        {quickQuestions.map((question, index) => (
-          <button
-            key={index}
-            onClick={() => sendMessage(question)}
-          >
-            {question}
+        {quickQuestions.map((q, i) => (
+          <button key={i} onClick={() => sendMessage(q)}>
+            {q}
           </button>
         ))}
       </div>
 
       {/* Messages */}
       <div className="messages">
-        {messages.map((message, index) => (
-          <div
-            key={index}
-            className={`msg ${message.type}`}
-          >
-            {message.text}
+        {messages.map((m, i) => (
+          <div key={i} className={`msg ${m.type}`}>
+            {m.text}
           </div>
         ))}
 
@@ -160,22 +189,16 @@ export default function Chatbot() {
       {/* Input */}
       <div className="input">
         <input
-          type="text"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) =>
-            e.key === "Enter" && sendMessage()
-          }
+          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
           placeholder={
             lang === "ar"
               ? "اكتب سؤالك..."
               : "Type your question..."
           }
         />
-
-        <button onClick={() => sendMessage()}>
-          ➤
-        </button>
+        <button onClick={() => sendMessage()}>➤</button>
       </div>
     </div>
   );

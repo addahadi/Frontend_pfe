@@ -1,81 +1,22 @@
 import React, { useState } from "react"; 
 import { deleteArticle, updateArticle } from "../services/blog.service"; 
 import { getArticlesWithDetails } from "../services/blog.service";
-import { HeartIcon, BookmarkIcon, EditIcon, ArchiveIcon, TrashIcon, PublishIcon, SearchIcon } from "../components/component";
-import ArticleEditor from "./ArticleEditor"; // ← import editor
+import { HeartIcon, BookmarkIcon, EditIcon, ArchiveIcon, TrashIcon, PublishIcon, SearchIcon,} from "../components/component";
+import ArticleEditor from "./ArticleEditor";
+import { ConfirmDialog } from "../components/component";
+import { TypeBadge } from "../components/component";
+import { StatusBadge } from "../components/component"; 
+import { AlertTriangle } from "lucide-react";
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Confirm Delete Dialog
-// ═══════════════════════════════════════════════════════════════════════════════
-const ConfirmDialog = ({ article, onConfirm, onCancel }) => {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onCancel} />
-      <div className="relative bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm mx-4 animate-[popIn_0.2s_ease-out]">
-        <div className="flex items-center justify-center w-12 h-12 bg-red-100 rounded-full mx-auto mb-4">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="3 6 5 6 21 6" />
-            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-            <path d="M10 11v6M14 11v6" />
-            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-          </svg>
-        </div>
-        <h3 className="text-center text-gray-900 font-bold text-base mb-1">Delete Article?</h3>
-        <p className="text-center text-gray-500 text-sm mb-1">You are about to delete:</p>
-        <p className="text-center text-gray-800 font-semibold text-sm mb-5 px-2 truncate">"{article.title}"</p>
-        <p className="text-center text-red-500 text-xs mb-6">This action cannot be undone.</p>
-        <div className="flex gap-3">
-          <button onClick={onCancel} className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors">Cancel</button>
-          <button onClick={onConfirm} className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium text-white bg-red-500 hover:bg-red-600 transition-colors">Yes, Delete</button>
-        </div>
-      </div>
-      <style>{`
-        @keyframes popIn {
-          from { opacity: 0; transform: scale(0.92); }
-          to   { opacity: 1; transform: scale(1); }
-        }
-      `}</style>
-    </div>
-  );
-};
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Badges
-// ═══════════════════════════════════════════════════════════════════════════════
-const TypeBadge = ({ type }) => {
-  const styles = {
-    BLOG:      "text-blue-500 bg-blue-50 border border-blue-200",
-    ACTUALITE: "text-amber-500 bg-amber-50 border border-amber-200",
-  };
-  return (
-    <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold tracking-wide ${styles[type]}`}>
-      {type}
-    </span>
-  );
-};
-
-const StatusBadge = ({ status }) => {
-  const styles = {
-    PUBLISHED: "text-green-600 bg-green-50 border border-green-200",
-    DRAFT:     "text-amber-600 bg-amber-50 border border-amber-200",
-  };
-  return (
-    <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold tracking-wide ${styles[status]}`}>
-      {status}
-    </span>
-  );
-};
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Main Component
-// ═══════════════════════════════════════════════════════════════════════════════
-const AdminArticles = () => {
+const AdminArticles = () => {  
+  
   const [search, setSearch]               = useState("");
   const [typeFilter, setTypeFilter]       = useState("All");
   const [statusFilter, setStatusFilter]   = useState("All");
   const [articles, setArticles]           = useState(getArticlesWithDetails());
   const [confirmTarget, setConfirmTarget] = useState(null);
-  const [editingArticle, setEditingArticle] = useState(null); // ← track article being edited
+  const [editingArticle, setEditingArticle] = useState(null);
+  const [forceEditorValidation, setForceEditorValidation] = useState(false);
 
   const filtered = articles.filter((a) => {
     const matchSearch = a.title.toLowerCase().includes(search.toLowerCase());
@@ -83,7 +24,7 @@ const AdminArticles = () => {
     const matchStatus = statusFilter === "All" || a.status === statusFilter;
     return matchSearch && matchType && matchStatus;
   });
-
+ 
   const handleDeleteConfirmed = () => {
     deleteArticle(confirmTarget.article_id);
     setArticles(getArticlesWithDetails());
@@ -96,18 +37,55 @@ const AdminArticles = () => {
     setArticles(getArticlesWithDetails());
   };
 
-  // Called by ArticleEditor when the user saves/publishes or cancels
-  const handleEditorClose = () => {
-    setEditingArticle(null);
-    setArticles(getArticlesWithDetails()); // refresh list after potential edits
+  // Check if article has all required fields for publishing
+  const isArticleComplete = (article) => {
+    const hasContent = article.content && 
+                       article.content !== "" && 
+                       article.content !== "{}" &&
+                       article.content !== "null" &&
+                       article.content !== "undefined";
+    
+    const hasExcerpt = (article.excerpt && article.excerpt.trim() !== "") || 
+                       (article.description && article.description.trim() !== "");
+    
+    const hasCoverImage = article.cover_img && article.cover_img !== "";
+    
+    return { hasContent, hasExcerpt, hasCoverImage, isComplete: hasContent && hasExcerpt && hasCoverImage };
   };
 
-  // ── If editing, render the editor fullscreen ──
+  // Handle publish button click from list
+  const handlePublishFromList = (article) => {
+    const checks = isArticleComplete(article);
+    
+    if (!checks.isComplete) {
+      // Open editor with validation errors shown
+      setForceEditorValidation(true);
+      setEditingArticle(article);
+    } else {
+      // Proceed with publish immediately
+      handleToggleStatus(article);
+    }
+  };
+
+  // Handle edit button click
+  const handleEdit = (article) => {
+    setForceEditorValidation(false);
+    setEditingArticle(article);
+  };
+
+  const handleEditorClose = () => {
+    setEditingArticle(null);
+    setForceEditorValidation(false);
+    setArticles(getArticlesWithDetails());
+  };
+
+  // If editing, render the editor fullscreen
   if (editingArticle) {
     return (
       <ArticleEditor
         articleToEdit={editingArticle}
         onClose={handleEditorClose}
+        forceValidation={forceEditorValidation}
       />
     );
   }
@@ -124,7 +102,7 @@ const AdminArticles = () => {
         />
       )}
 
-      {/* ── Top Bar ── */}
+      {/* Top Bar */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
         <div className="relative flex-1">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
@@ -158,7 +136,7 @@ const AdminArticles = () => {
         </select>
       </div>
 
-      {/* ── Table ── */}
+      {/* Table */}
       <table className="w-full border-collapse table-fixed">
         <colgroup>
           <col style={{ width: "26%" }} />
@@ -181,72 +159,91 @@ const AdminArticles = () => {
         </thead>
 
         <tbody>
-          {filtered.map((article, idx) => (
-            <tr
-              key={article.article_id}
-              className={`hover:bg-gray-50 transition-colors ${idx < filtered.length - 1 ? "border-b border-gray-100" : ""}`}
-            >
-              <td className="px-4 py-4">
-                <div className="font-semibold text-sm text-gray-900 truncate">{article.title}</div>
-                <div className="text-xs text-gray-400 truncate mt-0.5">{article.description}</div>
-              </td>
-              <td className="px-4 py-4"><TypeBadge type={article.type} /></td>
-              <td className="px-4 py-4"><StatusBadge status={article.status} /></td>
-              <td className="px-4 py-4">
-                <div className="flex flex-col gap-1">
-                  {article.tags.map((tag) => (
-                    <span key={tag} className="inline-block px-2 py-0.5 rounded-full text-xs text-gray-500 bg-gray-100 truncate">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              </td>
-              <td className="px-4 py-4">
-                <span className="flex items-center gap-1 text-red-500 text-xs font-medium">
-                  <HeartIcon /> {article.likes}
-                </span>
-              </td>
-              <td className="px-4 py-4">
-                <span className="flex items-center gap-1 text-gray-500 text-xs font-medium">
-                  <BookmarkIcon /> {article.saves}
-                </span>
-              </td>
-              <td className="px-4 py-4">
-                <div className="flex items-center gap-4">
-                  {/* ── Edit button now opens the editor ── */}
-                  <button
-                    onClick={() => setEditingArticle(article)}
-                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-colors cursor-pointer whitespace-nowrap"
-                  >
-                    <EditIcon /> Edit
-                  </button>
-
-                  {article.status === "PUBLISHED" ? (
+          {filtered.map((article, idx) => {
+            const checks = isArticleComplete(article);
+            const isIncomplete = !checks.isComplete && article.status === "DRAFT";
+            
+            return (
+              <tr
+                key={article.article_id}
+                className={`hover:bg-gray-50 transition-colors ${idx < filtered.length - 1 ? "border-b border-gray-100" : ""}`}
+              >
+                <td className="px-4 py-4">
+                  <div className="font-semibold text-sm text-gray-900 truncate flex items-center gap-2">
+                    {article.title}
+                    {isIncomplete && (
+                      <span title="Missing required fields for publishing" className="text-orange-500"><AlertTriangle className="text-yellow-500" size={14} /></span>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-400 truncate mt-0.5">
+                    {article.excerpt || article.description || "No excerpt"}
+                  </div>
+                </td>
+                <td className="px-4 py-4"><TypeBadge type={article.type} /></td>
+                <td className="px-4 py-4"><StatusBadge status={article.status} /></td>
+                <td className="px-4 py-4">
+                  <div className="flex flex-col gap-1">
+                    {article.tags.slice(0, 2).map((tag) => (
+                      <span key={tag} className="inline-block px-2 py-0.5 rounded-full text-xs text-gray-500 bg-gray-100 truncate">
+                        {tag}
+                      </span>
+                    ))}
+                    {article.tags.length > 2 && (
+                      <span className="text-xs text-gray-400">+{article.tags.length - 2} more</span>
+                    )}
+                  </div>
+                </td>
+                <td className="px-4 py-4">
+                  <span className="flex items-center gap-1 text-red-500 text-xs font-medium">
+                    <HeartIcon /> {article.likes}
+                  </span>
+                </td>
+                <td className="px-4 py-4">
+                  <span className="flex items-center gap-1 text-gray-500 text-xs font-medium">
+                    <BookmarkIcon /> {article.saves}
+                  </span>
+                </td>
+                <td className="px-4 py-4">
+                  <div className="flex items-center gap-2">
                     <button
-                      onClick={() => handleToggleStatus(article)}
-                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-colors cursor-pointer whitespace-nowrap"
+                      onClick={() => handleEdit(article)}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-colors cursor-pointer whitespace-nowrap"
                     >
-                      <ArchiveIcon /> Archive
+                      <EditIcon /> Edit
                     </button>
-                  ) : (
-                    <button
-                      onClick={() => handleToggleStatus(article)}
-                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-green-600 bg-white border border-green-500 hover:bg-green-50 transition-colors cursor-pointer whitespace-nowrap"
-                    >
-                      <PublishIcon /> Publish
-                    </button>
-                  )}
 
-                  <button
-                    onClick={() => setConfirmTarget(article)}
-                    className="inline-flex items-center justify-center w-10 h-7 rounded-md text-red-500 bg-white border border-red-200 hover:bg-red-50 hover:border-red-400 transition-colors cursor-pointer flex-shrink-0"
-                  >
-                    <TrashIcon />
-                  </button>
-                </div>
-              </td>
-            </tr>
-          ))}
+                    {article.status === "PUBLISHED" ? (
+                      <button
+                        onClick={() => handleToggleStatus(article)}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-colors cursor-pointer whitespace-nowrap"
+                      >
+                        <ArchiveIcon /> Archive
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handlePublishFromList(article)}
+                        className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors cursor-pointer whitespace-nowrap ${
+                          checks.isComplete 
+                            ? "text-green-600 border-green-500 hover:bg-green-50" 
+                            : "text-orange-600 border-orange-500 hover:bg-orange-50"
+                        }`}
+                        title={checks.isComplete ? "Publish now" : "Complete required fields to publish"}
+                      >
+                        <PublishIcon /> {checks.isComplete ? "Publish" : "Complete"}
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => setConfirmTarget(article)}
+                      className="inline-flex items-center justify-center w-8 h-7 rounded-md text-red-500 bg-white border border-red-200 hover:bg-red-50 hover:border-red-400 transition-colors cursor-pointer flex-shrink-0"
+                    >
+                      <TrashIcon />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 

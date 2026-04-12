@@ -170,11 +170,14 @@ export let saves = getInitialData('saves', defaultSaves);
 // Sync function to persist changes to localStorage
 export const syncToStorage = () => {
   saveToStorage('articles', articles);
-  // احفظ التاغات بدون count لأنه دائماً يُحسب من المقالات
+  // احفظ التاغات بدون count لأنه دائماً يُحسب من المقالات  
+  
+  // eslint-disable-next-line no-unused-vars
   saveToStorage('tags', tags.map(({ count, ...rest }) => rest));
   saveToStorage('likes', likes);
   saveToStorage('saves', saves);
-};
+
+}; 
 
 // Reset to defaults
 export const resetMockData = () => {

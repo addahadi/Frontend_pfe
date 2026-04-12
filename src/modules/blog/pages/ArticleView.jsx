@@ -23,7 +23,7 @@ import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { ListNode, ListItemNode } from "@lexical/list";
 import { CodeNode, CodeHighlightNode } from "@lexical/code";
 import { AutoLinkNode, LinkNode } from "@lexical/link";
-import { ImageNode } from "./ArticleEditor"; // ← import the custom ImageNode
+import { ImageNode } from "../lexical/ImageNode";
 
 // ── Lexical JSON detector ────────────────────────────────────────────────────
 const isLexicalJson = (content) => {
@@ -93,20 +93,6 @@ const estimateReadTime = (content) => {
   return Math.max(1, Math.ceil(wordCount / 200));
 };
 
-const getTagColor = (tagName) => {
-  const colors = {
-    "Béton armé": "bg-orange-100 text-orange-700 border-orange-200",
-    Fondations: "bg-amber-100 text-amber-700 border-amber-200",
-    Isolation: "bg-cyan-100 text-cyan-700 border-cyan-200",
-    "Calcul de charge": "bg-purple-100 text-purple-700 border-purple-200",
-    Maçonnerie: "bg-stone-100 text-stone-700 border-stone-200",
-    Enduit: "bg-pink-100 text-pink-700 border-pink-200",
-    Carrelage: "bg-teal-100 text-teal-700 border-teal-200",
-    "Actualité BTP": "bg-blue-100 text-blue-700 border-blue-200",
-    Youcef: "bg-indigo-100 text-indigo-700 border-indigo-200",
-  };
-  return colors[tagName] || "bg-gray-100 text-gray-700 border-gray-200";
-};
 
 // ── Sub Components ───────────────────────────────────────────────────────────
 
@@ -231,7 +217,7 @@ const TagList = ({ tags }) => (
         <Link
           key={tagId}
           to={`/articles?tag=${tagId}`}
-          className={`px-3 py-1 rounded-full text-xs font-medium border transition-all hover:shadow-sm ${getTagColor(tagName)}`}
+          className={`px-3 py-1 rounded-full text-xs font-medium border transition-all hover:shadow-sm bg-gray-100 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 }`}
         >
           {tagName}
         </Link>
@@ -285,7 +271,7 @@ const PopularTags = () => {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
       <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-        <span className="w-1 h-4 bg-purple-500 rounded-full"></span>
+        <span className="w-1 h-4 bg-blue-500 rounded-full"></span>
         Popular Topics
       </h3>
       <div className="flex flex-wrap gap-2">
@@ -293,7 +279,7 @@ const PopularTags = () => {
           <Link
             key={tag.id}
             to={`/articles?tag=${tag.id}`}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all hover:shadow-sm ${getTagColor(tag.name)}`}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all hover:shadow-sm  bg-gray-100 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200`}
           >
             {tag.name}
             <span className="ml-1.5 opacity-60">({tag.count})</span>

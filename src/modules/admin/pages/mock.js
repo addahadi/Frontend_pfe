@@ -80,7 +80,7 @@ export const statCards = [
   // Mimicking the hollow bars 
  export const barChartData = [
    
-    { month: 'Oct', rev: 30 },
+    
     { month: 'Nov', rev: 65 },
     { month: 'Dec', rev: 55 },
     { month: 'Jan', rev: 85 },

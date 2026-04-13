@@ -71,9 +71,9 @@ import { ImageIcon, X, Upload } from "lucide-react";
             )}
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-3"> 
             <label
-              className="block border-2 border-dashed border-gray-200 rounded-xl h-36 cursor-pointer hover:border-blue-400 transition-colors flex flex-col items-center justify-center gap-2 text-gray-400 hover:text-blue-500"
+              className=" border-2 border-dashed border-gray-200 rounded-xl h-36 cursor-pointer hover:border-blue-400 transition-colors flex flex-col items-center justify-center gap-2 text-gray-400 hover:text-blue-500"
               onClick={() => fileRef.current?.click()}
             >
               {preview ? (

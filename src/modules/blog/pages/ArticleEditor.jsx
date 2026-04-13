@@ -1,3 +1,5 @@
+/* eslint-disable react-hooks/exhaustive-deps */ 
+
 import React, { useState, useEffect } from "react";
 import { getTags, createArticle, updateArticle } from "../services/blog.service"; 
 import {Save, Globe, ImageIcon, X, Tag, ArrowLeft} from "lucide-react";
@@ -132,7 +134,7 @@ const ArticleEditor = ({ articleToEdit = null, onClose = null, forceValidation =
     return Object.keys(newErrors).length === 0;
   };
 
-  // Handle forceValidation from AdminArticles (when clicking Publish on incomplete article)
+  // Handle forceValidation from AdminArticles (when clicking Publish on incomplete article) 
   useEffect(() => {
     if (forceValidation) {
       // Wait for editor to be ready

@@ -1,18 +1,32 @@
 import React, { useState, useRef, useEffect } from "react";
 import "./chatbot.css";
 
+/**
+ * Chatbot Component: Handles AI construction expert interactions
+ */
 export default function Chatbot() {
-  const [messages, setMessages] = useState([
-    { type: "bot", text: "👷‍♂️ مرحبًا! اسألني عن البناء..." },
-  ]);
+  /* --- States & Hooks --- */
+  const [isOpen, setIsOpen] = useState(false);
+  const [messages, setMessages] = useState(() => {
+    // Load chat history from localStorage on initialization
+    const saved = localStorage.getItem("chatbot_messages");
+    return saved
+      ? JSON.parse(saved)
+      : [{ type: "bot", text: "👷‍♂️ مرحبًا! اسألني عن البناء..." }];
+  });
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   const [lang, setLang] = useState("ar");
+  const [faq, setFaq] = useState([]); // Dynamic FAQ questions from backend
 
-  const chatbotRef = useRef(null);
-  const messagesEndRef = useRef(null);
-  const offset = useRef({ x: 0, y: 0 });
+  /* --- Refs --- */
+  const chatbotRef = useRef(null); // Reference for the main container (Draggable)
+  const messagesEndRef = useRef(null); // Reference for auto-scrolling
+  const offset = useRef({ x: 0, y: 0 }); // Stores mouse offset for dragging
 
+  /* --- Configuration --- */
+  const API_URL = "http://localhost:3000/api";
+  const USER_ID = "test-user-id";
   const quickQuestions = [
     "كم نسبة خلط الاسمنت؟",
     "What is cement ratio?",
@@ -20,9 +34,52 @@ export default function Chatbot() {
     "Standard door size?",
   ];
 
+  /* --- Helper Functions --- */
+  
+  // Detects if text is Arabic or English for UI direction
   const detectLanguage = (value) =>
     /[\u0600-\u06FF]/.test(value) ? "ar" : "en";
 
+  /* --- Side Effects --- */
+
+  // Event listener to open chatbot from global window event
+  useEffect(() => {
+    const openHandler = () => setIsOpen(true);
+    window.addEventListener("open-chatbot", openHandler);
+    return () => window.removeEventListener("open-chatbot", openHandler);
+  }, []);
+
+  // Persists messages to localStorage whenever they update
+  useEffect(() => {
+    localStorage.setItem("chatbot_messages", JSON.stringify(messages));
+  }, [messages]);
+
+  // Keeps message container scrolled to the bottom
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
+
+  // Fetches FAQ data from API on component mount
+  useEffect(() => {
+    const fetchQuestions = async () => {
+      try {
+        const res = await fetch(`${API_URL}/questions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: USER_ID }),
+        });
+        const data = await res.json();
+        setFaq(data.questions || []);
+      } catch (err) {
+        console.error("FAQ fetch error", err);
+      }
+    };
+    fetchQuestions();
+  }, []);
+
+  /* --- Chat Handlers --- */
+
+  // Sends user message to AI expert endpoint
   const sendMessage = async (msg = text) => {
     if (!msg.trim() || loading) return;
 
@@ -34,56 +91,79 @@ export default function Chatbot() {
     setLoading(true);
 
     try {
-      const res = await fetch("http://localhost:3000/api/expert", {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+
+      const res = await fetch(`${API_URL}/expert`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_message: msg,
-          user_id: "guest",
+          user_id: USER_ID,
+          language: detectedLang,
         }),
+        signal: controller.signal,
       });
 
+      clearTimeout(timeout);
       const data = await res.json();
 
-      setTimeout(() => {
-        setMessages((prev) => [
-          ...prev,
-          {
-            type: "bot",
-            text: data.reply || "No response received.",
-          },
-        ]);
-        setLoading(false);
-      }, 700);
+      setMessages((prev) => [
+        ...prev,
+        { type: "bot", text: data.reply || "⚠️ No response from server" },
+      ]);
     } catch (error) {
       setMessages((prev) => [
         ...prev,
-        {
-          type: "bot",
-          text: "❌ Error connecting to server",
-        },
+        { type: "bot", text: "❌ Server error or timeout" },
       ]);
+    } finally {
       setLoading(false);
     }
   };
 
+  // Handles clicking on predefined FAQ buttons
+  const handleFAQClick = async (q) => {
+    const questionText = lang === "ar" ? q.question.ar : q.question.en;
+    setMessages((prev) => [...prev, { type: "user", text: questionText }]);
+    setLoading(true);
+
+    try {
+      const res = await fetch(`${API_URL}/welcome`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question_id: q.id,
+          user_id: USER_ID,
+          language: lang,
+        }),
+      });
+      const data = await res.json();
+      setMessages((prev) => [...prev, { type: "bot", text: data.reply }]);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        { type: "bot", text: "❌ Error loading answer" },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* --- Dragging Functionality --- */
+
   const startDrag = (e) => {
     if (!chatbotRef.current) return;
-
     offset.current = {
       x: e.clientX - chatbotRef.current.offsetLeft,
       y: e.clientY - chatbotRef.current.offsetTop,
     };
-
     document.onmousemove = drag;
     document.onmouseup = stopDrag;
   };
 
   const drag = (e) => {
     if (!chatbotRef.current) return;
-
     chatbotRef.current.style.left = `${e.clientX - offset.current.x}px`;
     chatbotRef.current.style.top = `${e.clientY - offset.current.y}px`;
   };
@@ -93,59 +173,54 @@ export default function Chatbot() {
     document.onmouseup = null;
   };
 
+  // Resets chat history and clears localStorage
   const clearMessages = () => {
-    setMessages([
-      { type: "bot", text: "👷‍♂️ مرحبًا! اسألني عن البناء..." },
-    ]);
+    setMessages([{ type: "bot", text: "👷‍♂️ مرحبًا! اسألني عن البناء..." }]);
+    localStorage.removeItem("chatbot_messages");
   };
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({
-      behavior: "smooth",
-    });
-  }, [messages, loading]);
+  if (!isOpen) return null;
 
+  /* --- Main UI Render --- */
   return (
     <div
       ref={chatbotRef}
       className="chatbot"
       dir={lang === "ar" ? "rtl" : "ltr"}
     >
-      {/* Header */}
+      {/* Header: Draggable title bar with action buttons */}
       <div className="header" onMouseDown={startDrag}>
         <span>🏗️ AI Construction</span>
-        <button
-          className="clear-btn"
-          onClick={clearMessages}
-          title="Clear chat"
-        >
-          🗑️
-        </button>
+        <div className="header-actions">
+          <button onClick={clearMessages} title="Clear Chat">🗑️</button>
+          <button onClick={() => setIsOpen(false)} title="Close">✖</button>
+        </div>
       </div>
 
-      {/* Quick Questions */}
+      {/* Quick Access: Dynamic FAQ or static fallback buttons */}
       <div className="quick">
-        {quickQuestions.map((question, index) => (
-          <button
-            key={index}
-            onClick={() => sendMessage(question)}
-          >
-            {question}
-          </button>
-        ))}
+        {faq.length > 0
+          ? faq.map((q) => (
+              <button key={q.id} onClick={() => handleFAQClick(q)}>
+                {lang === "ar" ? q.question.ar : q.question.en}
+              </button>
+            ))
+          : quickQuestions.map((q, i) => (
+              <button key={i} onClick={() => sendMessage(q)}>
+                {q}
+              </button>
+            ))}
       </div>
 
-      {/* Messages */}
+      {/* Message List: Displays bot and user history */}
       <div className="messages">
-        {messages.map((message, index) => (
-          <div
-            key={index}
-            className={`msg ${message.type}`}
-          >
-            {message.text}
+        {messages.map((m, i) => (
+          <div key={i} className={`msg ${m.type}`}>
+            {m.text}
           </div>
         ))}
 
+        {/* Loading/Typing Indicator */}
         {loading && (
           <div className="typing">
             <span></span>
@@ -153,29 +228,18 @@ export default function Chatbot() {
             <span></span>
           </div>
         )}
-
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
+      {/* Input Area: Text field and send button */}
       <div className="input">
         <input
-          type="text"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) =>
-            e.key === "Enter" && sendMessage()
-          }
-          placeholder={
-            lang === "ar"
-              ? "اكتب سؤالك..."
-              : "Type your question..."
-          }
+          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+          placeholder={lang === "ar" ? "اكتب سؤالك..." : "Type your question..."}
         />
-
-        <button onClick={() => sendMessage()}>
-          ➤
-        </button>
+        <button onClick={() => sendMessage()}>➤</button>
       </div>
     </div>
   );

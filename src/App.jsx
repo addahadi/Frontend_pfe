@@ -11,8 +11,6 @@ import AdminLayout from "./layouts/AdminLayout.jsx";
 import Dashboard from "./modules/admin/pages/Dashboard.jsx";
 import Users from "./modules/admin/pages/Users.jsx";
 import SubscriptionLayout from "./layouts/SubscriptionLayout.jsx";
-import PlanFeatures from "./modules/admin/pages/PlanFeatures.jsx";
-import Subscribers from "./modules/admin/pages/Subscribers.jsx";
 import PublicArticles from "./modules/blog/pages/PublicArticles.jsx";
 import AdminArticles from "./modules/blog/pages/AdminArticles.jsx";
 import ArticleEditor from "./modules/blog/pages/ArticleEditor.jsx"; 
@@ -28,6 +26,9 @@ import UserProfile from "./modules/user/pages/UserProfile.jsx";
 import ProjectExplorerLayout from "./layouts/ProjectExplorerLayout.jsx";
 import CategoryDetail from "./modules/user/pages/CategoryDetail.jsx";
 import { CONSTRUCTION_TREE, ADMIN_CATEGORY_TREE } from "./shared/lib/constants.js";
+import PlanFeatures from "./modules/admin/pages/PlanFeatures.jsx";
+import Subscribers from "./modules/admin/pages/Subscribers.jsx";
+import ModuleLayout from "./layouts/moduleLayout.jsx";
 
 function App() {
   return (

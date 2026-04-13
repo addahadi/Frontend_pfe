@@ -13,7 +13,8 @@ import Users from "./modules/admin/pages/Users.jsx";
 import SubscriptionLayout from "./layouts/SubscriptionLayout.jsx";
 import PublicArticles from "./modules/blog/pages/PublicArticles.jsx";
 import AdminArticles from "./modules/blog/pages/AdminArticles.jsx";
-import ArticleEditor from "./modules/blog/pages/ArticleEditor.jsx";
+import ArticleEditor from "./modules/blog/pages/ArticleEditor.jsx"; 
+import ArticleLayout from "./modules/blog/pages/ArticleLayout";
 import ArticleView from "./modules/blog/pages/ArticleView.jsx";
 import Tags from "./modules/blog/pages/Tags.jsx";
 import Modules from "./modules/admin/pages/Modules.jsx";
@@ -64,13 +65,16 @@ function App() {
         <Route path="subscriptions" element={<SubscriptionLayout />}>
           <Route index element={<PlanFeatures />} />
           <Route path="subscribers" element={<Subscribers />} />
-        </Route>
-        <Route path="articles" element={<AdminArticles />} />
-        <Route path="articles/new" element={<ArticleEditor />} />
-        <Route path="articles/:id/edit" element={<ArticleEditor />} />
-        <Route path="articles/tags" element={<Tags />} />
-        
-        <Route path="modules" element={<ModuleLayout/>}>
+        </Route> 
+
+        <Route path="articles" element={<ArticleLayout />}>
+          <Route index element={<AdminArticles />} />
+          <Route path="tags" element={<Tags />} />
+          <Route path="new" element={<ArticleEditor />} />
+          <Route path=":id/edit" element={<ArticleEditor />} />
+        </Route> 
+
+        <Route path="modules" element={<CategoryTree tree={ADMIN_CATEGORY_TREE} />}>
           <Route index element={<Modules />} />
           <Route path=":id" element={<Modules />} />
         </Route>

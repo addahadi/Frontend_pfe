@@ -1,8 +1,8 @@
-/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable react-hooks/exhaustive-deps */ 
 
-import React, { useState, useEffect, useRef} from "react";
-import { getTags, createArticle, updateArticle } from "../services/blog.service";
-import { Save, Globe, ImageIcon, X, Tag, ArrowLeft } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { getTags, createArticle, updateArticle } from "../services/blog.service"; 
+import {Save, Globe, ImageIcon, X, Tag, ArrowLeft} from "lucide-react";
 import { $getRoot } from "lexical";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
@@ -20,13 +20,13 @@ import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { ListNode, ListItemNode } from "@lexical/list";
 import { CodeNode, CodeHighlightNode } from "@lexical/code";
 import { AutoLinkNode, LinkNode } from "@lexical/link";
-import { TRANSFORMERS } from "@lexical/markdown";
+import { TRANSFORMERS } from "@lexical/markdown"; 
 import { ImageNode } from "../lexical/ImageNode.jsx";
-import ImagePlugin from "../lexical/ImagePlugin";
-import ToolbarPlugin from "../lexical/ToolbarPlugin";
-import PreFillPlugin from "../lexical/PreFillPlugin";
+import ImagePlugin from "../lexical/ImagePlugin"; 
+import ToolbarPlugin from "../lexical/ToolbarPlugin"; 
+import PreFillPlugin from "../lexical/PreFillPlugin";  
 import { Toast } from "../components/component";
-import { CharacterCountDisplay } from "../components/component";
+import { CharacterCountDisplay } from "../components/component"; 
 import { TagSelector } from "../components/component";
 
 const editorTheme = {
@@ -51,48 +51,12 @@ const AUTO_LINK_MATCHERS = [
   (text) => { const m = EMAIL_REGEX.exec(text); if (!m) return null; const f = m[0]; return { index: m.index, length: f.length, text: f, url: `mailto:${f}` }; },
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Auto-Save Status UI Component
-// ═══════════════════════════════════════════════════════════════════════════════
-const AutoSaveStatus = ({ status, lastSaved }) => {
-  const getStatusConfig = () => {
-    switch (status) {
-      case 'saving':
-        return { color: 'text-amber-500', bg: 'bg-amber-50', icon: '⏳', text: 'Saving...' };
-      case 'saved':
-        return { color: 'text-green-500', bg: 'bg-green-50', icon: '✓', text: `Saved ${lastSaved}` };
-      case 'error':
-        return { color: 'text-red-500', bg: 'bg-red-50', icon: '✕', text: 'Save failed' };
-      case 'unsaved':
-        return { color: 'text-gray-400', bg: 'bg-gray-100', icon: '•', text: 'Unsaved changes' };
-      default:
-        return { color: 'text-gray-400', bg: 'bg-gray-100', icon: '•', text: 'Ready' };
-    }
-  };
+const ArticleEditor = ({ articleToEdit = null, onClose = null, forceValidation = false }) => { 
 
-  const config = getStatusConfig();
-
-  return (
-    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${config.color} ${config.bg} transition-all duration-300`}>
-      <span className="animate-pulse">{config.icon}</span>
-      <span>{config.text}</span>
-    </div>
-  );
-};
-
-const ArticleEditor = ({ articleToEdit = null, onClose = null, forceValidation = false }) => {
+  
   const isEditMode = !!articleToEdit;
 
-  // ═══════════════════════════════════════════════════════════════════════════════
-  // UI State Only (No Logic)
-  // ═══════════════════════════════════════════════════════════════════════════════
-  const [autoSaveStatus, setAutoSaveStatus] = useState('idle'); // 'idle' | 'saving' | 'saved' | 'error' | 'unsaved'
-  const [lastSavedTime, setLastSavedTime] = useState(null);
-  const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
-  const [hasChanges, setHasChanges] = useState(false);
-
-  // ... rest of your existing state ...
-  const [availableTags] = useState(getTags());
+  const [availableTags] = useState(getTags()); 
   const [selectedTags, setSelectedTags] = useState(() => {
     if (!isEditMode) return [];
     const rawTags = articleToEdit.tag_ids ?? articleToEdit.tags ?? [];
@@ -112,7 +76,7 @@ const ArticleEditor = ({ articleToEdit = null, onClose = null, forceValidation =
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState(null);
   const [errors, setErrors] = useState({});
-  const [editorKey] = useState(0);
+  const [editorKey, ] = useState(0); // Force re-render if needed
 
   // Toast helper
   const showToast = (message, type = "success") => {
@@ -135,6 +99,7 @@ const ArticleEditor = ({ articleToEdit = null, onClose = null, forceValidation =
       newErrors.coverImage = "Cover image is required for publishing";
     }
     
+    // Check content
     if (editorState) {
       editorState.read(() => {
         const textContent = $getRoot().getTextContent().trim();
@@ -143,6 +108,7 @@ const ArticleEditor = ({ articleToEdit = null, onClose = null, forceValidation =
         }
       });
     } else {
+      // If no editor state yet, check if we have initial content from article
       if (!articleToEdit?.content || articleToEdit.content === "{}" || articleToEdit.content === "") {
         newErrors.content = "Content is required for publishing";
       }
@@ -153,10 +119,12 @@ const ArticleEditor = ({ articleToEdit = null, onClose = null, forceValidation =
     if (showMessages && Object.keys(newErrors).length > 0) {
       showToast("Please complete all required fields before publishing", "error");
       
+      // Scroll to first error after render
       setTimeout(() => {
         const errorElements = document.querySelectorAll('.border-red-500, .ring-red-500, .border-red-400');
         if (errorElements.length > 0) {
           errorElements[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Try to focus the input inside
           const input = errorElements[0].querySelector('input, textarea') || errorElements[0];
           if (input.focus) input.focus();
         }
@@ -166,8 +134,10 @@ const ArticleEditor = ({ articleToEdit = null, onClose = null, forceValidation =
     return Object.keys(newErrors).length === 0;
   };
 
+  // Handle forceValidation from AdminArticles (when clicking Publish on incomplete article) 
   useEffect(() => {
     if (forceValidation) {
+      // Wait for editor to be ready
       const timer = setTimeout(() => {
         validateForPublish(true);
       }, 300);
@@ -184,8 +154,6 @@ const ArticleEditor = ({ articleToEdit = null, onClose = null, forceValidation =
     if (file) {
       setCoverImage(URL.createObjectURL(file));
       if (errors.coverImage) setErrors(prev => ({...prev, coverImage: null}));
-      setHasChanges(true);
-      setAutoSaveStatus('unsaved');
     }
   };
 
@@ -195,57 +163,51 @@ const ArticleEditor = ({ articleToEdit = null, onClose = null, forceValidation =
       const words = $getRoot().getTextContent().trim().split(/\s+/).filter(Boolean).length;
       setWordCount(words);
     });
+    // Clear content error if user starts typing
     if (errors.content) {
       setErrors(prev => ({...prev, content: null}));
     }
-    setHasChanges(true);
-    setAutoSaveStatus('unsaved');
   };
 
-  const handleSave = async (publish = false) => {
-    setErrors({});
-    
-    if (publish && !validateForPublish(true)) {
-      return;
-    }
+const handleSave = async (publish = false) => {
+  setErrors({});
+  
+  if (publish && !validateForPublish(true)) {
+    return;
+  }
 
-    setIsSaving(true);
-    await new Promise((r) => setTimeout(r, 800));
+  setIsSaving(true);
+  await new Promise((r) => setTimeout(r, 800));
 
-    const payload = {
-      title: title.trim(),
-      slug: slug || "untitled",
-      excerpt: excerpt.trim(),
-      type,
-      status: publish ? "PUBLISHED" : "DRAFT",
-      tags: selectedTags,
-      cover_img: coverImage || "",
-      content: editorState ? JSON.stringify(editorState.toJSON()) : (articleToEdit?.content || ""),
-    };
-
-    if (isEditMode) {
-      updateArticle(articleToEdit.article_id, payload);
-    } else {
-      createArticle(payload);
-    }
-
-    setIsSaving(false);
-    setHasChanges(false);
-
-    if (publish) {
-      setStatus("PUBLISHED");
-      showToast("🎉 Article published successfully!", "success");
-    } else {
-      const action = isEditMode ? "updated" : "saved";
-      showToast(`📝 Draft ${action} successfully!`, "draft");
-      setLastSavedTime(new Date().toLocaleTimeString());
-      setAutoSaveStatus('saved');
-      
-      setTimeout(() => {
-        setAutoSaveStatus('idle');
-      }, 3000);
-    }
+  const payload = {
+    title: title.trim(),
+    slug: slug || "untitled",
+    excerpt: excerpt.trim(),
+    type,
+    status: publish ? "PUBLISHED" : "DRAFT",
+    tags: selectedTags,
+    cover_img: coverImage || "",
+    content: editorState ? JSON.stringify(editorState.toJSON()) : (articleToEdit?.content || ""),
   };
+
+  if (isEditMode) {
+    updateArticle(articleToEdit.article_id, payload);
+  } else {
+    createArticle(payload);
+  }
+
+  setIsSaving(false);
+
+  // Fixed toast logic with proper type handling
+  if (publish) {
+    setStatus("PUBLISHED");
+    showToast("🎉 Article published successfully!", "success");
+  } else {
+    // Fixed: Use info or draft type, and ensure isEditMode is checked correctly
+    const action = isEditMode ? "updated" : "saved";
+    showToast(`📝 Draft ${action} successfully!`, "draft");
+  }
+};
 
   const metaBtn = (active, colorClass) =>
     `px-4 py-1.5 text-xs font-semibold rounded-lg border-2 transition-all duration-150 select-none ${
@@ -286,56 +248,25 @@ const ArticleEditor = ({ articleToEdit = null, onClose = null, forceValidation =
       <div className="min-h-screen bg-gray-50">
         <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
 
-          {/* ═══════════════════════════════════════════════════════════════════════════════
-              HEADER WITH AUTO-SAVE UI
-          ═══════════════════════════════════════════════════════════════════════════════ */}
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-4">
-              {isEditMode && onClose && (
-                <button
-                  onClick={onClose}
-                  className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-800 transition-colors group"
-                >
-                  <ArrowLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
-                  Back to Articles
-                </button>
-              )}
-              
-              {isEditMode && (
-                <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2 text-sm text-blue-700">
-                  <span className="font-semibold">Editing:</span>
-                  <span className="truncate font-medium text-blue-900 max-w-xs">{articleToEdit.title}</span>
-                </div>
-              )}
-            </div>
+          {/* Back button */}
+          {isEditMode && onClose && (
+            <button
+              onClick={onClose}
+              className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-800 mb-6 transition-colors group"
+            >
+              <ArrowLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
+              Back to Articles
+            </button>
+          )}
 
-            {/* AUTO-SAVE UI CONTROLS */}
-            <div className="flex items-center gap-3">
-              {/* Status Indicator */}
-              <AutoSaveStatus status={autoSaveStatus} lastSaved={lastSavedTime} />
-              
-              {/* Toggle Button */}
-              <button
-                onClick={() => setAutoSaveEnabled(!autoSaveEnabled)}
-                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
-                  autoSaveEnabled 
-                    ? 'border-green-200 text-green-600 bg-green-50 hover:bg-green-100' 
-                    : 'border-gray-200 text-gray-500 bg-gray-50 hover:bg-gray-100'
-                }`}
-              >
-                Auto-save: {autoSaveEnabled ? 'ON' : 'OFF'}
-              </button>
-              
-              {/* Manual Save Button */}
-              <button
-                onClick={() => handleSave(false)}
-                disabled={isSaving || !hasChanges}
-                className="text-xs px-3 py-1.5 rounded-lg border border-blue-200 text-blue-600 bg-blue-50 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                Save Now
-              </button>
+          {/* Edit mode banner */}
+          {isEditMode && (
+            <div className="mb-6 flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-700">
+              <span className="font-semibold">Editing:</span>
+              <span className="truncate font-medium text-blue-900">{articleToEdit.title}</span>
+              <span className="ml-auto text-xs text-blue-400 font-mono">{articleToEdit.article_id}</span>
             </div>
-          </div>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
 
@@ -353,8 +284,6 @@ const ArticleEditor = ({ articleToEdit = null, onClose = null, forceValidation =
                   onChange={(e) => {
                     setTitle(e.target.value);
                     if (errors.title) setErrors(prev => ({...prev, title: null}));
-                    setHasChanges(true);
-                    setAutoSaveStatus('unsaved');
                   }}
                   placeholder="Enter your article title…"
                   className={`w-full border rounded-xl px-4 py-2.5 text-gray-900 text-lg font-medium placeholder-gray-400 transition-all outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
@@ -389,8 +318,6 @@ const ArticleEditor = ({ articleToEdit = null, onClose = null, forceValidation =
                   onChange={(e) => {
                     setExcerpt(e.target.value);
                     if (errors.excerpt) setErrors(prev => ({...prev, excerpt: null}));
-                    setHasChanges(true);
-                    setAutoSaveStatus('unsaved');
                   }}
                   rows={3} 
                   maxLength={200} 
@@ -497,26 +424,8 @@ const ArticleEditor = ({ articleToEdit = null, onClose = null, forceValidation =
                 <div>
                   <p className="text-xs font-semibold text-gray-500 mb-2">Type</p>
                   <div className="flex gap-2">
-                    <button 
-                      onClick={() => {
-                        setType("BLOG");
-                        setHasChanges(true);
-                        setAutoSaveStatus('unsaved');
-                      }} 
-                      className={metaBtn(type === "BLOG", "border-blue-300 bg-blue-50 text-blue-700")}
-                    >
-                      Blog
-                    </button>
-                    <button 
-                      onClick={() => {
-                        setType("ACTUALITE");
-                        setHasChanges(true);
-                        setAutoSaveStatus('unsaved');
-                      }} 
-                      className={metaBtn(type === "ACTUALITE", "border-purple-300 bg-purple-50 text-purple-700")}
-                    >
-                      Actualité
-                    </button>
+                    <button onClick={() => setType("BLOG")} className={metaBtn(type === "BLOG", "border-blue-300 bg-blue-50 text-blue-700")}>Blog</button>
+                    <button onClick={() => setType("ACTUALITE")} className={metaBtn(type === "ACTUALITE", "border-purple-300 bg-purple-50 text-purple-700")}>Actualité</button>
                   </div>
                 </div>
                 <div>
@@ -537,15 +446,7 @@ const ArticleEditor = ({ articleToEdit = null, onClose = null, forceValidation =
                   <Tag size={14} className="text-gray-400" />
                   <h3 className="text-xs font-bold text-gray-400 tracking-widest uppercase">Tags</h3>
                 </div>
-                <TagSelector 
-                  options={availableTags} 
-                  selected={selectedTags} 
-                  onChange={(newTags) => {
-                    setSelectedTags(newTags);
-                    setHasChanges(true);
-                    setAutoSaveStatus('unsaved');
-                  }} 
-                />
+                <TagSelector options={availableTags} selected={selectedTags} onChange={setSelectedTags} />
               </div>
 
               {/* Cover Image */}
@@ -591,8 +492,6 @@ const ArticleEditor = ({ articleToEdit = null, onClose = null, forceValidation =
                     onClick={() => {
                       setCoverImage(null);
                       if (errors.coverImage) setErrors(prev => ({...prev, coverImage: null}));
-                      setHasChanges(true);
-                      setAutoSaveStatus('unsaved');
                     }} 
                     className="mt-2 flex items-center gap-1 text-xs text-red-400 hover:text-red-600 transition-colors"
                   >

@@ -483,13 +483,65 @@ Authorization: Bearer <jwt_token>
     "message": "Human readable description",
     "status": 400
   }
-}```
+}
+```
+### Related Articles (Public)
 
 
+GET /api/articles/:id/related?limit=3
 
 
+**Response 200:** 
+
+```json 
+{
+  "data": [
+    {
+      "article_id": "a1714000000002",
+      "title": "Related Article Title",
+      "slug": "related-article",
+      "type": "BLOG",
+      "excerpt": "Short summary...",
+      "cover_img": "https://...",
+      "reading_time": 5,
+      "shared_tags": ["React", "JavaScript"],
+      "shared_tags_count": 2,
+      "relevance_score": 2.5,
+      "created_at": "2026-04-14"
+    }
+  ],
+  "meta": {
+    "is_fallback": false,
+    "total_matches": 3
+  }
+}
+``` 
+
+### Save Draft (Admin Only)
+
+PATCH `/api/articles/:id/draft`
+Authorization: Bearer <jwt_token>
 
 
+**Request Body:**
+```json
+{
+  "title": "Draft Title (optional)",
+  "excerpt": "Draft excerpt (optional)", 
+  "content": "{ \"root\": { ... } }",
+  "cover_img": "https://...",
+  "tags": ["tagId1"]
+} 
+```
 
-
-
+**Response 200:** 
+```json
+{
+  "data": {
+    "article_id": "a1714000000001",
+    "status": "DRAFT",
+    "updated_at": "2026-04-15T18:30:00Z",
+    "saved_as_draft": true
+  }
+}
+```json

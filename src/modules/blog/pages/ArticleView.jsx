@@ -116,7 +116,8 @@ const ArticleView = () => {
   // Fix warning 2: initialise loading as true so we never call setLoading(true)
   // synchronously inside an effect body.
   const [loading, setLoading]       = useState(true);
-  const [article, setArticle]       = useState(null);
+  const [article, setArticle]       = useState(null); 
+  // eslint-disable-next-line 
   const [allArticles, setAllArticles] = useState([]);
   const [liked, setLiked]           = useState(false);
   const [saved, setSaved]           = useState(false);
@@ -205,7 +206,7 @@ const ArticleView = () => {
 
           <div className="lg:col-span-1">
             <div className="sticky top-6 space-y-6">
-              <RelatedArticles articles={allArticles} currentSlug={article.slug} />
+             <RelatedArticles currentArticle={article} />
               <PopularTags />
             </div>
           </div>

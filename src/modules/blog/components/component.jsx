@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 
 // router (ناقص عندك)
-import { Link } from "react-router-dom";
+import { Link } from "react-router-dom"; 
+
 
 // lexical
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
@@ -19,11 +20,14 @@ import {
   ChevronLeft,
   Twitter,
   Linkedin,
-  Link as LinkIcon,
+  Link as LinkIcon, 
+  BookOpen,
+  Tag,           // ← Add this
+  ArrowRight     // ← Add this
 } from "lucide-react";
 
 // services
-import { getTagName, getTags } from "../services/blog.service";
+import { getTagName, getTags , getRelatedArticles, getRecentArticles } from "../services/blog.service";
 
 // utils
 import { estimateReadTime, fmtDate } from "../utils/blog.utils"; 
@@ -285,45 +289,7 @@ export const Hero = ({ article, likesCount, isLiked, isSaved, onLike, onSave }) 
   </div>
 );
 
-export const RelatedArticles = ({ articles, currentSlug }) => {
-  const related = articles.filter((a) => a.slug !== currentSlug).slice(0, 3);
-  if (related.length === 0) return null;
 
-  return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-        <span className="w-1 h-4 bg-blue-500 rounded-full"></span>
-        Related Articles
-      </h3>
-      <div className="space-y-3">
-        {related.map((item) => (
-          <Link
-            key={item.article_id}
-            to={`/articles/${item.slug}`}
-            className="group block p-3 bg-gray-50 rounded-lg hover:bg-blue-50 transition-all hover:shadow-sm"
-          >
-            <div className="flex items-start gap-3">
-              <img
-                src={item.cover_img}
-                alt={item.title}
-                className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
-              />
-              <div className="flex-1 min-w-0">
-                <span className="text-[10px] font-semibold text-blue-600 uppercase tracking-wider">
-                  {item.type}
-                </span>
-                <h4 className="text-sm font-semibold text-gray-900 mt-0.5 group-hover:text-blue-700 transition-colors line-clamp-2">
-                  {item.title}
-                </h4>
-                <p className="text-xs text-gray-400 mt-1">{fmtDate(item.created_at)}</p>
-              </div>
-            </div>
-          </Link>
-        ))}
-      </div>
-    </div>
-  );
-};
 
 export const PopularTags = () => {
   const allTags = getTags().sort((a, b) => b.count - a.count).slice(0, 8);
@@ -388,6 +354,155 @@ export const ShareSection = ({ title }) => {
   );
 };
 
+export const RelatedArticles = ({ currentArticle }) => {
+  const [related, setRelated] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [isFallback, setIsFallback] = useState(false);
+
+  useEffect(() => {
+    if (!currentArticle) return;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setLoading(true);
+    
+    const timer = setTimeout(() => {
+      // Get articles matching by tags
+      const articles = getRelatedArticles(
+        currentArticle.article_id,
+        currentArticle.tags || [],
+        3
+      );
+      
+      // If no matches, use recent articles as fallback
+      if (articles.length === 0) {
+        const fallback = getRecentArticles(currentArticle.article_id, 3);
+        setRelated(fallback);
+        setIsFallback(true);
+      } else {
+        setRelated(articles);
+        setIsFallback(false);
+      }
+      
+      setLoading(false);
+    }, 150);
+    
+    return () => clearTimeout(timer);
+  }, [currentArticle?.article_id, JSON.stringify(currentArticle?.tags)]);
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-4 h-4 bg-gray-200 rounded animate-pulse" />
+          <div className="h-3 bg-gray-200 rounded w-24 animate-pulse" />
+        </div>
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="flex gap-3 items-center">
+              <div className="w-14 h-14 bg-gray-200 rounded-md animate-pulse flex-shrink-0" />
+              <div className="flex-1 space-y-1.5">
+                <div className="h-3 bg-gray-200 rounded w-3/4 animate-pulse" />
+                <div className="h-2 bg-gray-200 rounded w-1/2 animate-pulse" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (related.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+      {/* Header */}
+      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+        <div className="flex items-center gap-1.5">
+          <BookOpen className="w-4 h-4 text-blue-600" />
+          <h3 className="font-semibold text-sm text-gray-900">
+            {isFallback ? "Recent Articles" : "Related Articles"}
+          </h3>
+        </div>
+        {isFallback && (
+          <span className="text-[10px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+            No matches
+          </span>
+        )}
+      </div>
+
+      {/* Articles List */}
+      <div>
+        {related.map((article, index) => (
+          <Link
+            key={article.article_id}
+            to={`/articles/${article.slug}`}
+            className={`group flex items-center gap-3 p-3 hover:bg-gray-50 transition-colors ${
+              index !== related.length - 1 ? 'border-b border-gray-50' : ''
+            }`}
+          >
+            {/* Thumbnail */}
+            <div className="w-14 h-14 rounded-md overflow-hidden bg-gray-100 flex-shrink-0 border border-gray-200">
+              {article.cover_img ? (
+                <img
+                  src={article.cover_img}
+                  alt={article.title}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-gray-300">
+                  <BookOpen size={16} />
+                </div>
+              )}
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 min-w-0">
+              <h4 className="text-sm font-medium text-gray-900 line-clamp-1 group-hover:text-blue-700 transition-colors mb-0.5">
+                {article.title}
+              </h4>
+              
+              <div className="flex items-center gap-2 text-[11px] text-gray-500">
+                <span className="flex items-center gap-0.5">
+                  <Clock size={10} />
+                  {article.readingTime}m
+                </span>
+                
+                {!isFallback && article.sharedTagsCount > 0 && (
+                  <span className="flex items-center gap-0.5 text-blue-600">
+                    <Tag size={10} />
+                    {article.sharedTagsCount}
+                  </span>
+                )}
+                
+                {!isFallback && article.sharedTags?.[0] && (
+                  <span className="text-gray-400 truncate max-w-[80px]">
+                    {article.sharedTags[0]}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Arrow */}
+            <ArrowRight 
+              size={14} 
+              className="text-gray-300 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all flex-shrink-0" 
+            />
+          </Link>
+        ))}
+      </div>
+
+      {/* Footer */}
+      <Link
+        to="/articles"
+        className="flex items-center justify-center gap-1 px-4 py-2 text-xs font-medium text-gray-600 hover:text-blue-600 hover:bg-gray-50 transition-colors border-t border-gray-100"
+      >
+        View all
+        <ArrowRight size={12} />
+      </Link>
+    </div>
+  );
+};
+
+export default RelatedArticles;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Icons

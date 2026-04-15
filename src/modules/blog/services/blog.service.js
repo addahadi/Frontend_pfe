@@ -231,4 +231,84 @@ export const getLikesCount = (articleId) => {
 
 export const getSavesCount = (articleId) => {
   return saves.filter((s) => s.article_id === articleId).length;
+}; 
+
+// ─── Related Articles Service ────────────────────────────────────────────────
+
+/**
+ * Find related articles based on shared tags with relevance scoring
+ * @param {string} currentArticleId - Article to exclude from results
+ * @param {string[]} currentTags - Array of tag IDs to match against
+ * @param {number} limit - Max results to return
+ * @returns {Array} Articles sorted by relevance (shared tags + recency)
+ */
+export const getRelatedArticles = (currentArticleId, currentTags = [], limit = 3) => {
+  if (!currentTags.length) return [];
+  
+  const published = getPublishedArticles().filter(
+    (a) => a.article_id !== currentArticleId
+  );
+  
+  // Score each article by shared tags and recency
+  const scored = published.map((article) => {
+    const articleTags = article.tags || [];
+    
+    // Count matching tags
+    const sharedTags = articleTags.filter((tagId) => 
+      currentTags.includes(tagId)
+    );
+    
+    const sharedCount = sharedTags.length;
+    
+    // Recency bonus (0.5 points if within last 30 days)
+    const daysOld = Math.floor(
+      (Date.now() - new Date(article.created_at).getTime()) / (1000 * 60 * 60 * 24)
+    );
+    const recencyBonus = daysOld < 30 ? 0.5 : 0;
+    
+    // Calculate reading time
+    const contentLength = typeof article.content === 'string' 
+      ? article.content.length 
+      : JSON.stringify(article.content).length;
+    const readingTime = Math.max(1, Math.round(contentLength / 1000));
+    
+    // Get tag names for display
+    const sharedTagNames = sharedTags.slice(0, 2).map(getTagName);
+    
+    return {
+      ...article,
+      relevanceScore: sharedCount + recencyBonus,
+      sharedTagsCount: sharedCount,
+      sharedTags: sharedTagNames,
+      readingTime,
+    };
+  });
+  
+  // Sort by score descending, then by date
+  return scored
+    .filter((a) => a.relevanceScore > 0)
+    .sort((a, b) => {
+      if (b.relevanceScore !== a.relevanceScore) {
+        return b.relevanceScore - a.relevanceScore;
+      }
+      return new Date(b.created_at) - new Date(a.created_at);
+    })
+    .slice(0, limit);
+};
+
+/**
+ * Fallback: Get recent articles when no tag matches found
+ */
+export const getRecentArticles = (excludeId, limit = 3) => {
+  return getPublishedArticles()
+    .filter((a) => a.article_id !== excludeId)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, limit)
+    .map((article) => ({
+      ...article,
+      readingTime: Math.max(1, Math.round(JSON.stringify(article.content).length / 1000)),
+      relevanceScore: 0,
+      sharedTagsCount: 0,
+      sharedTags: [],
+    }));
 };

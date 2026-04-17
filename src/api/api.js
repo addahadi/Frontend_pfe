@@ -1,5 +1,6 @@
+import { getAccessToken,setTokens,clearTokens } from "@/utils/token";
 import axios from "axios";
-import { clearTokens , getAccessToken , setAccessToken } from "../utils/token";
+
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
@@ -44,7 +45,7 @@ api.interceptors.response.use(
           `${import.meta.env.VITE_API_URL}/auth/refresh`);
 
         const newAccessToken = response.data.accessToken;
-        setAccessToken(newAccessToken);
+        setTokens(newAccessToken);
 
         originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
         return api(originalRequest);

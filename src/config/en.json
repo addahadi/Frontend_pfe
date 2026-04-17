@@ -1,0 +1,91 @@
+{
+  "navbar": {
+    "brand": "QuantiConstruct",
+    "home": "Home",
+    "aboutUs": "About Us",
+    "articles": "Articles",
+    "getStarted": "Get Started"
+  },
+  "hero": {
+    "badge": "THE FUTURE OF CONSTRUCTION MANAGEMENT",
+    "title1": "Build Smarter,",
+    "title2": "Faster.",
+    "description": "From structural blueprints to the final finishing touches. Automate your workflow with AI-driven estimation and precision project management.",
+    "startFreeTrial": "Start Free Trial",
+    "watchDemo": "Watch Demo",
+    "socialProof": "Joined by 2,000+ construction firms",
+    "aiCard": {
+      "status": "LIVE AI ESTIMATION",
+      "project": "Project: High-Rise Alpha",
+      "accuracy": "98.4%",
+      "accuracyLabel": "Accuracy Rate"
+    }
+  },
+  "features": {
+    "sectionTitle": "What you can do",
+    "sectionSubtitle": "Explore the powerful capabilities built for construction professionals.",
+    "card1": {
+      "title": "Project creation with formula-based calculations",
+      "description": "Accurate estimations using Projects, Formulas, Categories, and Units for ultimate precision."
+    },
+    "card2": {
+      "title": "Save and like articles",
+      "description": "Build your personal knowledge base from our expert insights and industry best practices."
+    },
+    "card3": {
+      "title": "Access to Blog and News content",
+      "description": "Stay informed with technical updates, case studies, and construction industry news."
+    }
+  },
+  "pricing": {
+    "sectionTitle": "Pricing & Plans",
+    "sectionSubtitle": "Choose the perfect plan for your construction management needs.",
+    "normalUser": {
+      "title": "Normal User",
+      "description": "Perfect for independent surveyors and small projects.",
+      "price": "$29",
+      "period": "/mo",
+      "feature1": "Up to 3 projects",
+      "feature2": "20 AI requests",
+      "feature3": "PDF export",
+      "button": "Get Started"
+    },
+    "company": {
+      "recommended": "RECOMMENDED",
+      "title": "Company",
+      "description": "Comprehensive solution for professional construction firms.",
+      "price": "$149",
+      "period": "/mo",
+      "feature1": "Up to 20 projects",
+      "feature2": "Unlimited AI requests",
+      "feature3": "PDF export",
+      "feature4": "External services integration",
+      "button": "Choose Enterprise"
+    }
+  },
+  "faq": {
+    "sectionTitle": "Frequently Asked Questions",
+    "sectionSubtitle": "Answers to common questions about our platform and estimation tools.",
+    "q1": "How accurate is the AI estimation?",
+    "q2": "Can I import my existing Excel formulas?",
+    "q3": "Do you offer trial periods for the Company plan?"
+  },
+  "footer": {
+    "brandDescription": "Leading the digital transformation of construction management. Our tools empower project managers globally to master cost estimation to deliver excellence.",
+    "platform": {
+      "title": "PLATFORM",
+      "home": "Home",
+      "pricingPlans": "Pricing & Plans",
+      "articlesNews": "Articles & News",
+      "aiSolutions": "AI Solutions"
+    },
+    "company": {
+      "title": "COMPANY",
+      "aboutUs": "About Us",
+      "contactSupport": "Contact Support",
+      "privacyPolicy": "Privacy Policy",
+      "termsOfService": "Terms of Service"
+    },
+    "copyright": "© 2026 QuantiConstruct Inc. All rights reserved."
+  }
+}

@@ -14,7 +14,7 @@ export const authService = {
   // ----------------------------------------------------------
   // ترجع: { accessToken, refreshToken, user }
   login: async ({ email, password }) => {
-    const response = await api.post("/auth/login", { email, password });
+    const response = await api.post("auth/login", { email, password });
     return response.data;
   },
 
@@ -22,7 +22,7 @@ export const authService = {
   // استعادة كلمة المرور — POST /auth/forgot-password
   // ----------------------------------------------------------
   forgotPassword: async ({ email }) => {
-    const response = await api.post("/auth/forgot-password", { email });
+    const response = await api.post("auth/forgot-password", { email });
     return response.data;
   },
 
@@ -31,8 +31,8 @@ export const authService = {
   // ----------------------------------------------------------
   // ترجع: { accessToken, refreshToken, user }
   register: async ({ fullName, email, password }) => {
-    const response = await api.post("/auth/register", {
-      fullName,
+    const response = await api.post("auth/register", {
+      name: fullName,
       email,
       password,
     });
@@ -43,7 +43,7 @@ export const authService = {
   // تسجيل الخروج — POST /auth/logout
   // ----------------------------------------------------------
   logout: async () => {
-    await api.post("/auth/logout");
+    await api.post("auth/logout");
   },
 
   // ----------------------------------------------------------
@@ -51,7 +51,23 @@ export const authService = {
   // ----------------------------------------------------------
   // يُستخدم عند تحميل التطبيق للتحقق إن كان المستخدم لا يزال مسجلاً
   getMe: async () => {
-    const response = await api.get("/auth/me");
+    const response = await api.get("auth/me");
+    return response.data;
+  },
+
+  // ----------------------------------------------------------
+  // التحقق من توكن إعادة تعيين كلمة المرور — GET /auth/verify-reset-token
+  // ----------------------------------------------------------
+  verifyResetToken: async (token) => {
+    const response = await api.get(`auth/verify-reset-token?token=${token}`);
+    return response.data;
+  },
+
+  // ----------------------------------------------------------
+  // إعادة تعيين كلمة المرور الجديدة — POST /auth/reset-password
+  // ----------------------------------------------------------
+  resetPassword: async ({ token, newPassword }) => {
+    const response = await api.post("auth/reset-password", { token, newPassword });
     return response.data;
   },
 };

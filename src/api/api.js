@@ -41,13 +41,16 @@ api.interceptors.response.use(
       originalRequest._retry = true;
 
       try {
-        const response = await axios.post(
-          `${import.meta.env.VITE_API_URL}/auth/refresh`);
+        const refreshToken = localStorage.getItem("refreshToken");
+        const response = await axios.put(
+          `${import.meta.env.VITE_API_URL}/auth/refresh`,
+          { refreshToken }
+        );
 
-        const newAccessToken = response.data.accessToken;
-        setTokens(newAccessToken);
+        const { accessToken, refreshToken: newRefreshToken } = response.data;
+        setTokens(accessToken, newRefreshToken);
 
-        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
         return api(originalRequest);
 
       } catch (err) {

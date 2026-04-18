@@ -14,7 +14,7 @@ import SubscriptionLayout from "./layouts/SubscriptionLayout.jsx";
 import PublicArticles from "./modules/blog/pages/PublicArticles.jsx";
 import AdminArticles from "./modules/blog/pages/AdminArticles.jsx";
 import ArticleEditor from "./modules/blog/pages/ArticleEditor.jsx";
-import ArticleLayout from "./modules/blog/pages/ArticleLayout";
+import ArticleLayout from "./modules/blog/pages/ArticleLayout.jsx";
 import ArticleView from "./modules/blog/pages/ArticleView.jsx";
 import Tags from "./modules/blog/pages/Tags.jsx";
 import Modules from "./modules/admin/pages/Modules.jsx";
@@ -28,7 +28,7 @@ import CategoryDetail from "./modules/user/pages/CategoryDetail.jsx";
 import { CONSTRUCTION_TREE, ADMIN_CATEGORY_TREE } from "./shared/lib/constants.js";
 import PlanFeatures from "./modules/admin/pages/PlanFeatures.jsx";
 import Subscribers from "./modules/admin/pages/Subscribers.jsx";
-import ModuleLayout from "./layouts/moduleLayout.jsx";
+import ModuleLayout from "./layouts/ModuleLayout.jsx";
 import { GuestRoute, ProtectedRoute } from "./shared/components/ui/ProtectedRoutes.jsx";
 
 // ============================================================

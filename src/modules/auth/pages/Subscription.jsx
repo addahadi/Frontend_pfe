@@ -1,36 +1,54 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import PlanCard from '../components/PlanCard';
 import PlanTable from '../components/PlanTable';
+import { planService } from '../services/plan.service';
+import { subscriptionService } from '../services/subscription.service';
+import { useNavigate } from 'react-router-dom';
 
 const Subscription = () => {
-  const plans = [
-    {
-      title: 'Normal User',
-      price: 'Free',
-      subtitle: 'Perfect for independent contractors.',
-      features: [
-        { text: 'Up to 3 projects', icon: 'check' },
-        { text: 'Main modules access', icon: 'check' },
-        { text: '20 AI requests per day', icon: 'check' },
-        { text: 'PDF export', icon: 'check' },
-      ],
-      buttonText: 'Select Normal',
-    },
-    {
-      title: 'Company',
-      price: '$99',
-      subtitle: 'For growing teams and enterprises.',
-      highlight: true,
-      features: [
-        { text: 'Unlimited projects', icon: 'check' },
-        { text: 'Main modules access', icon: 'check' },
-        { text: 'Unlimited AI requests', icon: 'bolt', color: 'text-accent', bold: true },
-        { text: 'PDF export', icon: 'check' },
-        { text: 'External services access', icon: 'api', color: 'text-accent', bold: true },
-      ],
-      buttonText: 'Select Company',
-    },
-  ];
+  const [plans, setPlans] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const fetchPlans = async () => {
+      try {
+        const response = await planService.getPlans();
+        const plansData = response.data || [];
+        
+        const formattedPlans = plansData.map(p => ({
+          id: p.id,
+          title: p.name_en || p.name_ar || p.name,
+          price: p.price === 0 ? 'Free' : `$${p.price}`,
+          subtitle: p.duration ? `${p.duration} days plan` : '',
+          highlight: p.type === 'COMPANY',
+          features: Array.isArray(p.features) ? p.features.map(f => ({
+            text: f.label || JSON.stringify(f),
+            icon: 'check'
+          })) : [],
+          buttonText: p.type === 'COMPANY' ? 'Select Company' : 'Select Normal',
+        }));
+        setPlans(formattedPlans);
+      } catch (err) {
+        console.error("Error fetching plans:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPlans();
+  }, []);
+
+  const handleSelectPlan = async (planId) => {
+    try {
+      await subscriptionService.createSubscription({ plan_id: planId });
+      alert("Subscription successful!");
+      navigate("/dashboard");
+    } catch (err) {
+      console.error("Error creating subscription:", err);
+      alert("Failed to subscribe. Please try again.");
+    }
+  };
 
   const tableData = [
     { feature: 'Project Creation', normal: 'Up to 3 projects', company: 'Unlimited' },
@@ -57,7 +75,7 @@ const Subscription = () => {
             {/* Plan Cards */}
             <div className="mx-auto grid w-full max-w-4xl grid-cols-1 gap-8 px-4 py-4 md:grid-cols-2">
               {plans.map((plan, i) => (
-                <PlanCard key={i} {...plan} />
+                <PlanCard key={i} {...plan} onClick={() => handleSelectPlan(plan.id)} />
               ))}
             </div>
 

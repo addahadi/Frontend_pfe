@@ -39,7 +39,12 @@ export const ProtectedRoute = ({ redirectTo = "/auth/login", roles }) => {
 
   // إذا حُدِّدت أدوار مسموح بها وليس دور المستخدم فيها
   // مثال: <ProtectedRoute roles={["admin"]} />
-  if (roles && !roles.includes(user?.role)) {
+  if (roles && user?.role) {
+    const hasRole = roles.some(role => role.toLowerCase() === user.role.toLowerCase());
+    if (!hasRole) {
+      return <Navigate to="/dashboard" replace />;
+    }
+  } else if (roles && !user?.role) {
     return <Navigate to="/dashboard" replace />;
   }
 

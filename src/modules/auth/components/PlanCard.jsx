@@ -9,7 +9,7 @@ const iconMap = {
   remove: X,
 };
 
-const PlanCard = ({ title, price, subtitle, features, highlight, buttonText }) => {
+const PlanCard = ({ title, price, subtitle, features, highlight, buttonText, onClick }) => {
   return (
     <div
       className={`relative flex flex-col overflow-hidden rounded-xl border ${
@@ -43,6 +43,7 @@ const PlanCard = ({ title, price, subtitle, features, highlight, buttonText }) =
         </div>
 
         <button
+          onClick={onClick}
           className={`flex h-12 w-full items-center justify-center rounded-lg px-4 text-base font-bold leading-normal transition-colors ${
             highlight
               ? "bg-primary hover:bg-primary/90 shadow-primary/20 text-white shadow-md"

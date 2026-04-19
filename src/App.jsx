@@ -55,6 +55,7 @@ function App() {
       <Route path="/choose-plan" element={<Subscription />} />
 
       
+
       <Route element={<ProtectedRoute />}>
         <Route element={<UserLayout />}>
           <Route path="/dashboard" element={<UserDashboard />} />
@@ -62,7 +63,7 @@ function App() {
           <Route path="/projects/:projectId" element={<ProjectOverview />} />
           
           
-          <Route path="/resources" element={<ResourcesPage />} /> 
+         <Route path="/resources" element={<ResourcesPage />} /> 
         </Route>
 
         <Route

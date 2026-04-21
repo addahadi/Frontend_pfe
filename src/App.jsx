@@ -31,26 +31,19 @@ import Subscribers from "./modules/admin/pages/Subscribers.jsx";
 import ModuleLayout from "./layouts/ModuleLayout.jsx";
 import { GuestRoute, ProtectedRoute } from "./shared/components/ui/ProtectedRoutes.jsx";
 
-// ============================================================
-// استيراد مكوّنات حماية المسارات
-// ============================================================
+import ResourcesPage from './pages/ResourcesPage.jsx'; 
 
 function App() {
   return (
     <Routes>
-      {/* ===================================================
-          المسارات العامة — متاحة للجميع
-      =================================================== */}
+      {/* مسارات العامة */}
       <Route element={<PublicLayout />}>
         <Route path="/" element={<Home />} />
         <Route path="/articles" element={<PublicArticles />} />
         <Route path="/articles/:id" element={<ArticleView />} />
       </Route>
 
-      {/* ===================================================
-          GuestRoute — لصفحات المصادقة فقط
-          إذا كان المستخدم مسجّلاً → يُحوَّل لـ /dashboard
-      =================================================== */}
+      {/* مسارات الدخول (Login/Register) */}
       <Route element={<GuestRoute />}>
         <Route element={<AuthLayout />}>
           <Route path="/auth/login" element={<Login />} />
@@ -59,18 +52,18 @@ function App() {
         </Route>
       </Route>
 
-      {/* اختيار الخطة — متاح بعد التسجيل */}
       <Route path="/choose-plan" element={<Subscription />} />
 
-      {/* ===================================================
-          ProtectedRoute — لصفحات المستخدم العادي
-          إذا لم يكن مسجّلاً → يُحوَّل لـ /auth/login
-      =================================================== */}
+      
+
       <Route element={<ProtectedRoute />}>
         <Route element={<UserLayout />}>
           <Route path="/dashboard" element={<UserDashboard />} />
           <Route path="/profile" element={<UserProfile />} />
           <Route path="/projects/:projectId" element={<ProjectOverview />} />
+          
+          
+         <Route path="/resources" element={<ResourcesPage />} /> 
         </Route>
 
         <Route
@@ -82,10 +75,7 @@ function App() {
         </Route>
       </Route>
 
-      {/* ===================================================
-          ProtectedRoute — لصفحات الـ Admin فقط
-          roles={["admin"]} يمنع المستخدمين العاديين
-      =================================================== */}
+      {/* مسارات الأدمن */}
       <Route element={<ProtectedRoute roles={["admin"]} redirectTo="/dashboard" />}>
         <Route path="/admin" element={<AdminLayout />}>
           <Route index element={<Dashboard />} />

@@ -6,18 +6,13 @@ import { BrowserRouter } from "react-router-dom";
 import { AuthProvider } from "./modules/auth/context/auth.context";
 
 // ============================================================
-// main.jsx — نقطة الدخول للتطبيق
-// ============================================================
-// الترتيب مهم جداً:
-//   BrowserRouter  → يوفر نظام التوجيه (Routing)
-//     AuthProvider → يوفر بيانات المصادقة لكل التطبيق
-//       App        → مسارات التطبيق
+// main.jsx — نقطة الدخول للتطبيق (تم الدمج بنجاح)
 // ============================================================
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <BrowserRouter>
-      {/* AuthProvider يُغلّف App بالكامل حتى يصل useAuth() لكل مكوّن */}
+      {/* AuthProvider ضروري باش يخدم الـ Login في قاع التطبيق */}
       <AuthProvider>
         <App />
       </AuthProvider>

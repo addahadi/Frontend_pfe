@@ -20,7 +20,7 @@ import { StatusBadge } from "../components/component";
 import { AlertTriangle, Trash2, Loader2, CheckCircle2 } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ConfirmDialog — حوار الحذف مع أنيميشن
+// ConfirmDialog
 // ─────────────────────────────────────────────────────────────────────────────
 const ConfirmDialog = ({ article, onConfirm, onCancel }) => {
   const [isDeleting, setIsDeleting] = useState(false);
@@ -121,7 +121,7 @@ const ConfirmDialog = ({ article, onConfirm, onCancel }) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// المكوّن الرئيسي
+// Main Component
 // ─────────────────────────────────────────────────────────────────────────────
 const AdminArticles = () => {
   const [search, setSearch]             = useState("");
@@ -135,31 +135,49 @@ const AdminArticles = () => {
   const [forceEditorValidation, setForceEditorValidation] = useState(false);
   const [togglingIds, setTogglingIds]   = useState(new Set());
 
-  // ── تحميل المقالات ────────────────────────────────────────────────────────
-  const loadArticles = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const res = await fetchAdminArticles("ALL");
-      setArticles(res.data);
-    } catch (err) {
-      setError(err.message || "Failed to load articles");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  // ── Load articles ─────────────────────────────────────────────────────────
+ const loadArticles = useCallback(async () => {
+  setIsLoading(true);
+  setError(null);
+  try {
+    const res = await fetchAdminArticles("ALL");
+    
+    // ✅ الطريقة البسيطة: نحسب النوع محلياً بناءً على UUID
+    const processedArticles = res.data.map(article => {
+      let typeName = "BLOG"; // default
+      
+      if (article.article_type_id === "22222222-2222-2222-2222-222222222222") {
+        typeName = "ACTUALITE";
+      } else if (article.article_type_id === "11111111-1111-1111-1111-111111111111") {
+        typeName = "BLOG";
+      }
+      
+      return {
+        ...article,
+        type_name_en: typeName,
+        type: typeName
+      };
+    });
+    
+    setArticles(processedArticles);
+  } catch (err) {
+    setError(err.message || "Failed to load articles");
+  } finally {
+    setIsLoading(false);
+  }
+}, []);
 
   useEffect(() => { loadArticles(); }, [loadArticles]);
 
-  // ── فلترة ──────────────────────────────────────────────────────────────────
+  // ── Filter ────────────────────────────────────────────────────────────────
   const filtered = articles.filter((a) => {
-    const matchSearch = (a.title || "").toLowerCase().includes(search.toLowerCase());
-    const matchType   = typeFilter === "All" || a.type === typeFilter;
+    const matchSearch = (a.title || a.title_en || "").toLowerCase().includes(search.toLowerCase());
+    const matchType   = typeFilter === "All" || (a.type || a.type_name_en || "") === typeFilter;
     const matchStatus = statusFilter === "All" || a.status === statusFilter;
     return matchSearch && matchType && matchStatus;
   });
 
-  // ── حذف ───────────────────────────────────────────────────────────────────
+  // ── Delete ────────────────────────────────────────────────────────────────
   const handleDeleteConfirmed = async () => {
     await deleteArticleApi(confirmTarget.article_id);
     await new Promise((r) => setTimeout(r, 900));
@@ -168,58 +186,47 @@ const AdminArticles = () => {
   };
 
   // ─────────────────────────────────────────────────────────────────────────
-  // isArticleReadyForPublish — الفحص الذكي للاكتمال
+  // isArticleReadyForPublish — checks only fields available in the LIST query
   //
-  // ⚠️  لماذا لا نفحص content هنا؟
-  //   لأن API القائمة (/admin/articles) لا يُرجع حقل content كامل
-  //   (ثقيل جداً للقائمة)، فيظهر null دائماً حتى لو المقال محفوظ.
-  //   → نفحص excerpt + cover_img فقط من بيانات القائمة.
-  //   → نفحص content الحقيقي لاحقاً داخل handleToggleStatus
-  //     عند جلب المقال الكامل بـ fetchArticleById.
+  // ⚠️  The list API (/admin/articles) does NOT return content_en/content_ar
+  //     (too heavy). So we only check: title, excerpt, cover_img.
+  //     Content is checked when the full article is fetched (in handleToggleStatus).
   // ─────────────────────────────────────────────────────────────────────────
   const isArticleReadyForPublish = (article) => {
-    const hasTitle =
-      typeof article.title === "string" && article.title.trim().length > 0;
+    const titleEn = article.title_en || article.title || "";
+    const titleAr = article.title_ar || "";
+    const hasTitleEn = typeof titleEn === "string" && titleEn.trim().length >= 3;
+    // For the list view, if title_ar is empty we are lenient (single-language editor)
+    const hasTitleAr = typeof titleAr === "string" && titleAr.trim().length >= 3;
 
-    const excerptValue = article.excerpt ?? article.excerpt_en ?? "";
-    const hasExcerpt   = String(excerptValue).trim().length > 0;
+    const excerptEn = article.excerpt_en || article.excerpt || "";
+    const hasExcerptEn = String(excerptEn).trim().length > 0;
 
     const hasCoverImage =
       typeof article.cover_img === "string" &&
       article.cover_img.trim() !== "" &&
       !article.cover_img.startsWith("blob:");
 
-    // المقال "ناقص" إذا كان ينقصه عنوان أو excerpt أو صورة
-    const isIncomplete = !hasTitle || !hasExcerpt || !hasCoverImage;
+    const missing = [];
+    if (!hasTitleEn) missing.push("Title (min 3 chars)");
+    if (!hasExcerptEn) missing.push("Excerpt");
+    if (!hasCoverImage) missing.push("Cover image");
+    // NOTE: content is checked server-side on publish, not here
 
-    return { hasTitle, hasExcerpt, hasCoverImage, isIncomplete };
+    return {
+      hasTitleEn,
+      hasTitleAr,
+      hasExcerptEn,
+      hasCoverImage,
+      isIncomplete: missing.length > 0,
+      missing,
+    };
   };
 
-  // ── فحص المحتوى الحقيقي (من المقال الكامل) ───────────────────────────────
-  const checkContentFromFullArticle = (fullArticle) => {
-    const rawContent = fullArticle.content ?? fullArticle.content_en ?? null;
-    if (!rawContent) return false;
-    try {
-      const parsed =
-        typeof rawContent === "string" ? JSON.parse(rawContent) : rawContent;
-      const extractText = (node) => {
-        if (!node) return "";
-        if (typeof node.text === "string") return node.text;
-        if (Array.isArray(node.children))
-          return node.children.map(extractText).join(" ");
-        return "";
-      };
-      return extractText(parsed?.root ?? parsed).trim().length > 0;
-    } catch {
-      return typeof rawContent === "string" && rawContent.trim().length > 0;
-    }
-  };
-
-  // ── تبديل الحالة ──────────────────────────────────────────────────────────
+  // ── Toggle status (publish / archive) ─────────────────────────────────────
   const handleToggleStatus = async (article) => {
-
-    // أرشفة مباشرة — لا تحتاج فحصاً
     if (article.status === "PUBLISHED") {
+      // Archive → move back to DRAFT
       setTogglingIds((prev) => new Set(prev).add(article.article_id));
       try {
         await updateArticleApi(article.article_id, { status: "DRAFT" });
@@ -227,32 +234,30 @@ const AdminArticles = () => {
           prev.map((a) =>
             a.article_id === article.article_id ? { ...a, status: "DRAFT" } : a
           )
-        ); 
-        setStatusFilter("All");
+        );
       } catch (err) {
         setError(err.message || "Failed to archive article");
-        await loadArticles();
       } finally {
-        setTogglingIds((prev) => { const s = new Set(prev); s.delete(article.article_id); return s; });
+        setTogglingIds((prev) => {
+          const s = new Set(prev);
+          s.delete(article.article_id);
+          return s;
+        });
       }
       return;
     }
 
-    // نشر — نجلب المقال الكامل لفحص المحتوى الحقيقي
+    // Publish: quick check from list data first
+    const checks = isArticleReadyForPublish(article);
+    if (checks.isIncomplete) {
+      setForceEditorValidation(true);
+      setEditingArticle({ ...article, _missingFields: checks.missing });
+      return;
+    }
+
+    // Attempt publish (server will validate content too)
     setTogglingIds((prev) => new Set(prev).add(article.article_id));
     try {
-      const fullArticle = await fetchArticleById(article.article_id);
-      const checks      = isArticleReadyForPublish(fullArticle);
-      const hasContent  = checkContentFromFullArticle(fullArticle);
-
-      if (checks.isIncomplete || !hasContent) {
-        // ناقص → افتح المحرر مع تفعيل التحقق
-        setForceEditorValidation(true);
-        setEditingArticle(fullArticle);
-        return;
-      }
-
-      // مكتمل → انشر مباشرة
       await updateArticleApi(article.article_id, { status: "PUBLISHED" });
       setArticles((prev) =>
         prev.map((a) =>
@@ -260,14 +265,21 @@ const AdminArticles = () => {
         )
       );
     } catch (err) {
-      setError(err.message || "Failed to publish article");
-      await loadArticles();
+      // If server rejects (e.g. missing content), open editor
+      setError(null);
+      const fullArticle = await fetchArticleById(article.article_id).catch(() => article);
+      setForceEditorValidation(true);
+      setEditingArticle(fullArticle);
     } finally {
-      setTogglingIds((prev) => { const s = new Set(prev); s.delete(article.article_id); return s; });
+      setTogglingIds((prev) => {
+        const s = new Set(prev);
+        s.delete(article.article_id);
+        return s;
+      });
     }
   };
 
-  // ── فتح المحرر لإكمال مقال ناقص ──────────────────────────────────────────
+  // ── Open editor to complete an incomplete draft ───────────────────────────
   const handleCompleteFromList = async (article) => {
     setIsLoading(true);
     try {
@@ -281,7 +293,7 @@ const AdminArticles = () => {
     }
   };
 
-  // ── تعديل عادي ───────────────────────────────────────────────────────────
+  // ── Edit ─────────────────────────────────────────────────────────────────
   const handleEdit = async (article) => {
     setForceEditorValidation(false);
     setIsLoading(true);
@@ -329,7 +341,7 @@ const AdminArticles = () => {
         </div>
       )}
 
-      {/* الفلاتر */}
+      {/* Filters */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
         <div className="relative flex-1">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
@@ -343,12 +355,20 @@ const AdminArticles = () => {
             className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 outline-none focus:border-gray-400 focus:bg-white transition-colors"
           />
         </div>
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="px-2 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white outline-none cursor-pointer focus:border-gray-400 transition-colors">
+        <select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+          className="px-2 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white outline-none cursor-pointer focus:border-gray-400 transition-colors"
+        >
           <option>All</option>
           <option>BLOG</option>
           <option>ACTUALITE</option>
         </select>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-2 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white outline-none cursor-pointer focus:border-gray-400 transition-colors">
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="px-2 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white outline-none cursor-pointer focus:border-gray-400 transition-colors"
+        >
           <option>All</option>
           <option>PUBLISHED</option>
           <option>DRAFT</option>
@@ -383,26 +403,26 @@ const AdminArticles = () => {
                 ))}
               </tr>
             </thead>
-            <tbody> 
-              
-              {
-                
-              filtered.map((article, idx) => {
+            <tbody>
+              {filtered.map((article, idx) => {
                 const checks     = isArticleReadyForPublish(article);
-                const isToggling = togglingIds.has(article.article_id); 
-                
+                const isToggling = togglingIds.has(article.article_id);
+                // Display title prefers English
+                const displayTitle = article.title_en || article.title || "Untitled";
+                const displayExcerpt = article.excerpt_en || article.excerpt || "";
+                const displayType = article.type || article.type_name_en || "";
 
                 return (
                   <tr
                     key={article.article_id}
                     className={`hover:bg-gray-50 transition-colors ${idx < filtered.length - 1 ? "border-b border-gray-100" : ""}`}
                   >
-                    {/* العنوان */}
+                    {/* Title */}
                     <td className="px-4 py-4">
                       <div className="font-semibold text-sm text-gray-900 truncate flex items-center gap-2">
-                        {article.title}
+                        {displayTitle}
                         {article.status === "DRAFT" && checks.isIncomplete && (
-                          <span title="Missing excerpt or cover image — click Complete to fix">
+                          <span title={`Missing: ${checks.missing.join(", ")}`}>
                             <AlertTriangle className="text-yellow-500 flex-shrink-0" size={14} />
                           </span>
                         )}
@@ -413,12 +433,16 @@ const AdminArticles = () => {
                         )}
                       </div>
                       <div className="text-xs text-gray-400 truncate mt-0.5">
-                        {article.excerpt_en || article.excerpt || article.description || "No excerpt"}
+                        {displayExcerpt || "No excerpt"}
                       </div>
                     </td>
 
-                    <td className="px-4 py-4"><TypeBadge type={article.type || "BLOG"} /></td>
-                    <td className="px-4 py-4"><StatusBadge status={article.status} /></td>
+                    <td className="px-4 py-4">
+                      <TypeBadge type={article.type_name_en} />
+                    </td>
+                    <td className="px-4 py-4">
+                      <StatusBadge status={article.status} />
+                    </td>
 
                     <td className="px-4 py-4">
                       <div className="flex flex-col gap-1">
@@ -445,7 +469,7 @@ const AdminArticles = () => {
                       </span>
                     </td>
 
-                    {/* ── الإجراءات ── */}
+                    {/* Actions */}
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-2">
 
@@ -457,14 +481,12 @@ const AdminArticles = () => {
                         </button>
 
                         {isToggling ? (
-                          /* جاري المعالجة */
                           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-gray-400 border border-gray-200 bg-gray-50 whitespace-nowrap">
                             <Loader2 size={11} className="animate-spin" />
                             Please wait…
                           </span>
 
                         ) : article.status === "PUBLISHED" ? (
-                          /* منشور → أرشفة */
                           <button
                             onClick={() => handleToggleStatus(article)}
                             className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors whitespace-nowrap"
@@ -473,17 +495,15 @@ const AdminArticles = () => {
                           </button>
 
                         ) : checks.isIncomplete ? (
-                          /* Draft + ناقص → Complete (يفتح المحرر) */
                           <button
                             onClick={() => handleCompleteFromList(article)}
-                            title="Missing excerpt or cover image"
+                            title={`Missing: ${checks.missing.join(", ")}`}
                             className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium text-orange-600 border border-orange-400 bg-orange-50 hover:bg-orange-100 transition-colors whitespace-nowrap"
                           >
                             <PublishIcon /> Complete
                           </button>
 
                         ) : (
-                          /* Draft + مكتمل (excerpt + cover موجودان) → Publish */
                           <button
                             onClick={() => handleToggleStatus(article)}
                             title="Publish this article"

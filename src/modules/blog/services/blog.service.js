@@ -4,7 +4,7 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api
 
 const getToken = () => localStorage.getItem("token");
 
-// ── خطأ API مخصص ────────────────────────────────────────────────────────────
+// ── Custom API Error ──────────────────────────────────────────────────────────
 class ApiError extends Error {
   constructor(message, status) {
     super(message);
@@ -13,8 +13,8 @@ class ApiError extends Error {
 }
 
 /**
- * publicFetch — بدون توثيق، يعمل مع CORS wildcard (*)
- * مستخدم في: المقالات، الوسوم، القراءة العامة
+ * publicFetch — no auth, works with CORS wildcard (*)
+ * Used for: articles, tags, public reads
  */
 const publicFetch = async (endpoint, options = {}) => {
   const url = `${API_BASE}${endpoint}`;
@@ -28,13 +28,14 @@ const publicFetch = async (endpoint, options = {}) => {
     const res = await fetch(url, { ...options, headers });
 
     let data = {};
-    try { data = await res.json(); } catch { /* non-JSON */ }
+    try {
+      data = await res.json();
+    } catch {
+      /* non-JSON */
+    }
 
     if (!res.ok) {
-      throw new ApiError(
-        data?.error?.message || `Request failed: ${res.status}`,
-        res.status
-      );
+      throw new ApiError(data?.error?.message || `Request failed: ${res.status}`, res.status);
     }
 
     return data;
@@ -47,13 +48,11 @@ const publicFetch = async (endpoint, options = {}) => {
 };
 
 /**
- * apiFetch — مع Bearer token
- * مستخدم في: كل نقاط /admin/*
- * ⚠️ يتطلب أن يضبط الـ backend Access-Control-Allow-Origin للأصل الحقيقي
- *    وليس (*) وأن يضع Access-Control-Allow-Credentials: true
+ * apiFetch — with Bearer token
+ * Used for: all /admin/* endpoints
  */
 const apiFetch = async (endpoint, options = {}) => {
-  const url   = `${API_BASE}${endpoint}`;
+  const url = `${API_BASE}${endpoint}`;
   const token = getToken();
 
   const headers = {
@@ -66,7 +65,11 @@ const apiFetch = async (endpoint, options = {}) => {
     const res = await fetch(url, { ...options, headers });
 
     let data = {};
-    try { data = await res.json(); } catch { /* non-JSON */ }
+    try {
+      data = await res.json();
+    } catch {
+      /* non-JSON */
+    }
 
     if (!res.ok) {
       if (res.status === 401) {
@@ -75,15 +78,12 @@ const apiFetch = async (endpoint, options = {}) => {
           window.dispatchEvent(
             new CustomEvent("auth:unauthorized", {
               detail: { message: data?.error?.message || "Unauthorized" },
-            })
+            }),
           );
         }
         throw new Error(data?.error?.message || "Unauthorized - Please login again");
       }
-      throw new ApiError(
-        data?.error?.message || `Request failed: ${res.status}`,
-        res.status
-      );
+      throw new ApiError(data?.error?.message || `Request failed: ${res.status}`, res.status);
     }
 
     return data;
@@ -95,116 +95,158 @@ const apiFetch = async (endpoint, options = {}) => {
   }
 };
 
-// ── مساعدات ───────────────────────────────────────────────────────────────────
-const extractData       = (res) => res.data?.data   || res.data   || [];
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const extractData = (res) => res.data?.data || res.data || [];
 const extractPagination = (res) => res.data?.pagination || res.pagination || null;
-const extractItem       = (res) => res.data?.data   || res.data   || null;
+const extractItem = (res) => res.data?.data || res.data || null;
 
-// ── كاش الوسوم ────────────────────────────────────────────────────────────────
+// ── Tags cache ────────────────────────────────────────────────────────────────
 let tagsCache = [];
 
 const mapTag = (t) => ({
-  id:      t.tag_id  || t.id,
-  name:    t.name_en || t.name,
+  id: t.tag_id || t.id,
+  name: t.name_en || t.name,
   name_en: t.name_en,
   name_ar: t.name_ar,
-  count:   Number(t.count) || 0,
+  count: Number(t.count) || 0,
 });
 
+/**
+ * mapArticle — normalises a raw article from the API.
+ *
+ * Key fields exposed:
+ *   title        — display title (en)
+ *   title_en     — kept raw for the editor
+ *   excerpt      — display excerpt (en)
+ *   excerpt_en   — kept raw for the editor
+ *   type         — type name string e.g. "BLOG" (from type_name_en)
+ *   type_name_en — same as above, redundant alias for clarity
+ *   tagObjects   — full tag objects [{tag_id, name_en, name_ar}]
+ *   tags         — array of tag_id UUIDs (for filtering)
+ */
 const mapArticle = (article, lang = "en") => {
   const isAr = lang === "ar";
+
+  // Resolve the human-readable type name from whichever field the backend sent
+  const typeName =
+    article.type_name_en || // getArticles list query
+    (typeof article.type === "string" && !/^[0-9a-f-]{36}$/i.test(article.type)
+      ? article.type // getArticleById now returns type_name_en as `type`
+      : null) ||
+    null;
+
   return {
     ...article,
-    article_id:   article.article_id || article.id,
-    title:        isAr ? (article.title_ar   || article.title)   : (article.title_en   || article.title),
-    excerpt:      isAr ? (article.excerpt_ar  || article.excerpt) : (article.excerpt_en  || article.excerpt),
-    content:      isAr ? (article.content_ar  || article.content) : (article.content_en  || article.content),
-type:
-  article.type ||
-  article.type_name_en ||
-  "BLOG",
-    tags:         article.tags?.map((t) => t.tag_id || t.id || t) || [],
-    tagObjects:   article.tags || [],
-    likesCount:   Number(article.likesCount  ?? article.likes_count  ?? 0),
-    savesCount:   Number(article.savesCount  ?? article.saves_count  ?? 0),
-    created_at:   article.created_at,
-    updated_at:   article.updated_at,
+    article_id: article.article_id || article.id,
+
+    // Bilingual display fields
+    title: isAr
+      ? article.title_ar || article.title_en || article.title
+      : article.title_en || article.title,
+    title_en: article.title_en || article.title || "",
+    title_ar: article.title_ar || "",
+
+    excerpt: isAr
+      ? article.excerpt_ar || article.excerpt_en || article.excerpt
+      : article.excerpt_en || article.excerpt || "",
+    excerpt_en: article.excerpt_en || article.excerpt || "",
+    excerpt_ar: article.excerpt_ar || "",
+
+    content: isAr
+      ? article.content_ar || article.content_en || article.content
+      : article.content_en || article.content,
+    content_en: article.content_en || article.content || null,
+    content_ar: article.content_ar || null,
+
+    // Type — always the human-readable name string (never a UUID)
+    type: typeName,
+    type_name_en: typeName,
+
+    // Tags
+    tags: article.tags?.map((t) => t.tag_id || t.id || t) || [],
+    tagObjects: article.tags || [],
+
+    // Counts
+    likesCount: Number(article.likesCount ?? article.likes_count ?? 0),
+    savesCount: Number(article.savesCount ?? article.saves_count ?? 0),
+
+    // Dates
+    created_at: article.created_at,
+    updated_at: article.updated_at,
     published_at: article.published_at,
-    cover_img:    article.cover_img,
-    slug:         article.slug,
-    status:       article.status,
+    cover_img: article.cover_img,
+    slug: article.slug,
+    status: article.status,
+    article_type_id: article.article_type_id,
   };
 };
 
-// ─── APIs العامة (لا تحتاج توثيق) ────────────────────────────────────────────
+// ─── Public APIs (no auth) ────────────────────────────────────────────────────
 
 export const fetchArticles = async (params = {}) => {
-  const query        = new URLSearchParams({ status: "PUBLISHED", ...params }).toString();
-  const res          = await publicFetch(`/articles?${query}`);
+  const query = new URLSearchParams({ status: "PUBLISHED", ...params }).toString();
+  const res = await publicFetch(`/articles?${query}`);
   const articlesData = extractData(res);
-  const pagination   = extractPagination(res) || {
-    page: 1, limit: 9, total: articlesData.length, totalPages: 1,
+  const pagination = extractPagination(res) || {
+    page: 1,
+    limit: 9,
+    total: articlesData.length,
+    totalPages: 1,
   };
-  const articles = Array.isArray(articlesData)
-    ? articlesData.map((a) => mapArticle(a))
-    : [];
+  const articles = Array.isArray(articlesData) ? articlesData.map((a) => mapArticle(a)) : [];
   return { data: articles, pagination };
 };
 
 export const fetchArticleBySlug = async (slug) => {
-  const res         = await publicFetch(`/articles/slug/${slug}`);
+  const res = await publicFetch(`/articles/slug/${slug}`);
   const articleData = extractItem(res);
   return articleData ? mapArticle(articleData) : null;
 };
 
 export const fetchArticleById = async (id) => {
-  const res         = await publicFetch(`/articles/${id}`);
+  const res = await publicFetch(`/articles/${id}`);
   const articleData = extractItem(res);
   return articleData ? mapArticle(articleData) : null;
 };
 
 export const fetchTags = async () => {
-  const res      = await apiFetch("/tags");
+  const res = await publicFetch("/tags");
   const tagsData = extractData(res);
   tagsCache = Array.isArray(tagsData) ? tagsData.map(mapTag) : [];
   return tagsCache;
 };
 
 export const fetchRelatedArticles = async (articleId, limit = 3) => {
-  const res          = await publicFetch(`/articles/${articleId}/related?limit=${limit}`);
+  const res = await publicFetch(`/articles/${articleId}/related?limit=${limit}`);
   const articlesData = extractData(res);
-  const meta         = res.data?.meta || res.meta || { is_fallback: false, total_matches: 0 };
-  const articles     = Array.isArray(articlesData)
+  const meta = res.data?.meta || res.meta || { is_fallback: false, total_matches: 0 };
+  const articles = Array.isArray(articlesData)
     ? articlesData.map((a) => ({
         ...mapArticle(a),
-        readingTime:     a.reading_time,
-        sharedTags:      a.shared_tags       || [],
+        readingTime: a.reading_time,
+        sharedTags: a.shared_tags || [],
         sharedTagsCount: a.shared_tags_count || 0,
-        relevanceScore:  a.relevance_score   || 0,
+        relevanceScore: a.relevance_score || 0,
       }))
     : [];
   return { data: articles, meta };
 };
 
 export const toggleLike = async (articleId) => {
-  const token = getToken();
-  const res = await publicFetch(`/articles/${articleId}/likes`, {
+  const res = await apiFetch(`/articles/${articleId}/likes`, {
     method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   return extractItem(res) || res.data;
 };
 
 export const toggleSave = async (articleId) => {
-  const token = getToken();
-  const res = await publicFetch(`/articles/${articleId}/saves`, {
+  const res = await apiFetch(`/articles/${articleId}/saves`, {
     method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   return extractItem(res) || res.data;
 };
 
-// ─── مساعدات للتصدير ──────────────────────────────────────────────────────────
+// ─── Tag helpers ──────────────────────────────────────────────────────────────
 
 export const getTags = () => tagsCache;
 
@@ -237,10 +279,10 @@ export const getRecentArticles = async (excludeId, limit = 3) => {
     .slice(0, limit)
     .map((a) => ({
       ...a,
-      readingTime:     Math.max(1, Math.round(JSON.stringify(a.content || {}).length / 1000)),
-      relevanceScore:  0,
+      readingTime: Math.max(1, Math.round(JSON.stringify(a.content || {}).length / 1000)),
+      relevanceScore: 0,
       sharedTagsCount: 0,
-      sharedTags:      [],
+      sharedTags: [],
     }));
 };
 
@@ -258,17 +300,18 @@ export const isLexicalJson = (content) => {
   }
 };
 
-// ─── APIs الإدارة (تحتاج توثيق) ──────────────────────────────────────────────
+// ─── Admin APIs (require auth) ────────────────────────────────────────────────
 
 export const fetchAdminArticles = async (status = "ALL") => {
-  const res          = await apiFetch(`/admin/articles?status=${encodeURIComponent(status)}`);
+  const res = await apiFetch(`/admin/articles?status=${encodeURIComponent(status)}`);
   const articlesData = extractData(res);
-  const pagination   = extractPagination(res) || {
-    page: 1, limit: 9, total: articlesData.length, totalPages: 1,
+  const pagination = extractPagination(res) || {
+    page: 1,
+    limit: 9,
+    total: articlesData.length,
+    totalPages: 1,
   };
-  const articles = Array.isArray(articlesData)
-    ? articlesData.map((a) => mapArticle(a))
-    : [];
+  const articles = Array.isArray(articlesData) ? articlesData.map((a) => mapArticle(a)) : [];
   return { data: articles, pagination };
 };
 
@@ -276,34 +319,41 @@ export const createArticleApi = async (payload) => {
   const res = await apiFetch("/articles", {
     method: "POST",
     body: JSON.stringify({
-      title_en:        payload.title_en   || payload.title,
-      title_ar:        payload.title_ar   || payload.title,
-      excerpt_en:      payload.excerpt_en || payload.excerpt,
-      excerpt_ar:      payload.excerpt_ar || payload.excerpt,
-      content_en:      payload.content_en || payload.content,
-      content_ar:      payload.content_ar || payload.content,
-      cover_img:       payload.cover_img,
-      status:          payload.status, 
-            type:            payload.type,           // ← جديد
-
-      article_type_id: payload.article_type_id || undefined,
-      tags:            payload.tags,
+      title_en: payload.title_en || payload.title,
+      title_ar: payload.title_ar || payload.title,
+      excerpt_en: payload.excerpt_en || payload.excerpt,
+      excerpt_ar: payload.excerpt_ar || payload.excerpt,
+      content_en: payload.content_en || payload.content,
+      content_ar: payload.content_ar || payload.content,
+      cover_img: payload.cover_img,
+      status: payload.status,
+      // Send both so backend picks whichever is available
+      ...(payload.article_type_id && { article_type_id: payload.article_type_id }),
+      article_type_id: payload.article_type_id,
+      ...(payload.tags && { tags: payload.tags }),
     }),
   });
+
   return extractItem(res) || res.data;
 };
 
 export const updateArticleApi = async (id, payload) => {
   const allowedFields = [
-    "title_en", "title_ar",
-    "excerpt_en", "excerpt_ar",
-    "content_en", "content_ar",
-    "status", "cover_img",
-    "article_type_id", "tags","type",
+    "title_en",
+    "title_ar",
+    "excerpt_en",
+    "excerpt_ar",
+    "content_en",
+    "content_ar",
+    "status",
+    "cover_img",
+    "article_type_id",
+    "tags",
+    "type",
   ];
 
   const body = Object.fromEntries(
-    Object.entries(payload).filter(([key]) => allowedFields.includes(key))
+    Object.entries(payload).filter(([key]) => allowedFields.includes(key)),
   );
 
   const res = await apiFetch(`/articles/${id}`, {
@@ -322,15 +372,15 @@ export const saveDraftApi = async (id, payload) => {
   const res = await apiFetch(`/articles/${id}/draft`, {
     method: "PATCH",
     body: JSON.stringify({
-      title_en:   payload.title_en   || payload.title,
-      title_ar:   payload.title_ar   || payload.title,
+      title_en: payload.title_en || payload.title,
+      title_ar: payload.title_ar || payload.title,
       excerpt_en: payload.excerpt_en || payload.excerpt,
       excerpt_ar: payload.excerpt_ar || payload.excerpt,
       content_en: payload.content_en || payload.content,
       content_ar: payload.content_ar || payload.content,
-      cover_img:  payload.cover_img,
-      status:     payload.status,
-      tags:       payload.tags,
+      cover_img: payload.cover_img,
+      status: payload.status,
+      tags: payload.tags,
     }),
   });
   return extractItem(res) || res.data;
@@ -340,11 +390,11 @@ export const uploadCoverApi = async (file) => {
   const formData = new FormData();
   formData.append("cover", file);
 
-  const token   = getToken();
+  const token = getToken();
   const headers = {};
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res  = await fetch(`${API_BASE}/admin/upload/cover`, {
+  const res = await fetch(`${API_BASE}/admin/upload/cover`, {
     method: "POST",
     headers,
     body: formData,
@@ -375,7 +425,7 @@ export const adminLogout = () => {
   }
 };
 
-// ─── إدارة الوسوم ─────────────────────────────────────────────────────────────
+// ─── Tag management ───────────────────────────────────────────────────────────
 
 export const createTagApi = (name_en, name_ar) =>
   apiFetch("/tags", {
@@ -385,4 +435,9 @@ export const createTagApi = (name_en, name_ar) =>
 
 export const deleteTagApi = async (id) => {
   await apiFetch(`/tags/${id}`, { method: "DELETE" });
+};
+
+export const fetchArticleTypes = async () => {
+  const res = await publicFetch("/article-types");
+  return extractData(res);
 };

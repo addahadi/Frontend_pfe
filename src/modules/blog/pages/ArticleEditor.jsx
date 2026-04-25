@@ -5,7 +5,9 @@ import {
   fetchTags,
   createArticleApi,
   updateArticleApi,
-  uploadCoverApi,
+  uploadCoverApi, 
+    fetchArticleTypes,  // ← أضف هذا
+
 } from "../services/blog.service";
 import { Save, Globe, ImageIcon, X, Tag, ArrowLeft } from "lucide-react";
 import { $getRoot } from "lexical";
@@ -32,12 +34,11 @@ import ToolbarPlugin from "../lexical/ToolbarPlugin";
 import PreFillPlugin from "../lexical/PreFillPlugin";
 import { Toast } from "../components/component";
 import { CharacterCountDisplay } from "../components/component";
-import { TagSelector } from "../components/component";
+import { TagSelector } from "../components/component"; 
 
-// ✅ UUIDs الحقيقية لأنواع المقالات (استبدلها بالقيم من قاعدة بياناتك)
-const TYPE_UUID_MAP = {
-  BLOG: "550e8400-e29b-41d4-a716-446655440000",
-  ACTUALITE: "660e8400-e29b-41d4-a716-446655440001",
+const FALLBACK_TYPE_IDS = {
+  'BLOG': '11111111-1111-1111-1111-111111111111',
+  'ACTUALITE': '22222222-2222-2222-2222-222222222222',
 };
 
 const editorTheme = {
@@ -108,14 +109,18 @@ const ArticleEditor = ({
         setAvailableTags(tags);
         if (isEditMode) {
           const rawTags = articleToEdit.tag_ids ?? articleToEdit.tags ?? [];
-          const resolved = rawTags.map(t => {
-            if (typeof t === 'string' && t.length === 36) return t;
-            if (typeof t === 'object') return t.tag_id || t.id;
-            if (typeof t === 'string') {
-              return tags.find(tag => tag.name_en === t || tag.name_ar === t)?.tag_id;
-            }
-            return t;
-          }).filter(Boolean);
+          const resolved = rawTags
+            .map((t) => {
+              if (typeof t === "string" && t.length === 36) return t;
+              if (typeof t === "object") return t.tag_id || t.id;
+              if (typeof t === "string") {
+                return tags.find(
+                  (tag) => tag.name_en === t || tag.name_ar === t
+                )?.tag_id;
+              }
+              return t;
+            })
+            .filter(Boolean);
           if (resolved.length) setSelectedTags(resolved);
         }
       })
@@ -127,29 +132,25 @@ const ArticleEditor = ({
     isEditMode ? articleToEdit.excerpt ?? articleToEdit.description ?? "" : ""
   );
 
-  // ✅ تحسين منطق type عند التعديل
-  const [type, setType] = useState(() => {
-    if (!isEditMode) return "BLOG";
-    
-    const t = articleToEdit.type;
-    const typeId = articleToEdit.article_type_id;
-    
-    // تحقق من UUID أولاً
-    if (typeId === TYPE_UUID_MAP.ACTUALITE) return "ACTUALITE";
-    if (typeId === TYPE_UUID_MAP.BLOG) return "BLOG";
-    
-    // ثم تحقق من النص
-    if (typeof t === "string") {
-      if (/^blog$/i.test(t)) return "BLOG";
-      if (/^(actualite|actualité|news|ACTUALITE)$/i.test(t)) return "ACTUALITE";
-    }
-    
-    return "BLOG";
-  });
+const [articleType, setArticleType] = useState(() => {
+  if (!isEditMode) return { name: "BLOG", id: null };
+
+  // استخراج الاسم من البيانات القديمة (يدعم عدة أشكال)
+  const rawType = articleToEdit.type || articleToEdit.type_name_en || "";
+  const typeName = /actualite|actualité|news/i.test(rawType) ? "ACTUALITE" : "BLOG";
+
+  // استخراج الـ UUID إذا كان موجوداً في بيانات التعديل
+  const typeId = articleToEdit.article_type_id || null;
+
+  return { name: typeName, id: typeId };
+});
 
   const [status, setStatus] = useState(
     isEditMode ? articleToEdit.status : "DRAFT"
-  );
+  ); 
+
+
+
   const [coverImage, setCoverImage] = useState(
     isEditMode ? articleToEdit.cover_img : null
   );
@@ -163,13 +164,41 @@ const ArticleEditor = ({
   const showToast = (message, type = "success") =>
     setToast({ message, type });
 
+  const [types, setTypes] = useState([]);
+  const [selectedTypeId, setSelectedTypeId] = useState(null);
+
+  // ✅ FIXED: wrapped in useEffect so it doesn't run on every render
+  useEffect(() => {
+    fetchArticleTypes()
+      .then((list) => {
+        setTypes(list);
+        if (isEditMode && articleToEdit?.article_type_id) {
+          const found = list.find(
+            (t) =>
+              t.article_type_id === articleToEdit.article_type_id ||
+              t.id === articleToEdit.article_type_id
+          );
+          if (found) setSelectedTypeId(found.article_type_id || found.id);
+        } else {
+          const blog = list.find((t) => t.name_en === "BLOG");
+          if (blog) setSelectedTypeId(blog.article_type_id || blog.id);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load article types:", err);
+      });
+  }, [isEditMode, articleToEdit?.article_type_id]);
+
   // ── Validation ───────────────────────────────────────────────────────────────
   const validateForPublish = (showMessages = true) => {
     const newErrors = {};
 
-    if (!title.trim()) newErrors.title = "Title is required for publishing";
-    if (!excerpt.trim()) newErrors.excerpt = "Excerpt is required for publishing";
-    if (!coverImage) newErrors.coverImage = "Cover image is required for publishing";
+    if (!title.trim())
+      newErrors.title = "Title is required for publishing";
+    if (!excerpt.trim())
+      newErrors.excerpt = "Excerpt is required for publishing";
+    if (!coverImage)
+      newErrors.coverImage = "Cover image is required for publishing";
 
     const hasValidContent = () => {
       if (editorState) {
@@ -181,9 +210,10 @@ const ArticleEditor = ({
         return hasText;
       }
       if (articleToEdit?.content) {
-        const content = typeof articleToEdit.content === 'string' 
-          ? JSON.parse(articleToEdit.content) 
-          : articleToEdit.content;
+        const content =
+          typeof articleToEdit.content === "string"
+            ? JSON.parse(articleToEdit.content)
+            : articleToEdit.content;
         return content?.root?.children?.length > 0;
       }
       return false;
@@ -196,7 +226,10 @@ const ArticleEditor = ({
     setErrors(newErrors);
 
     if (showMessages && Object.keys(newErrors).length > 0) {
-      showToast("Please complete all required fields before publishing", "error");
+      showToast(
+        "Please complete all required fields before publishing",
+        "error"
+      );
       setTimeout(() => {
         const el = document.querySelector(".border-red-500, .ring-red-500");
         if (el?.focus) el.focus();
@@ -227,7 +260,8 @@ const ArticleEditor = ({
     if (!file) return;
     setCoverFile(file);
     setCoverImage(URL.createObjectURL(file));
-    if (errors.coverImage) setErrors((prev) => ({ ...prev, coverImage: null }));
+    if (errors.coverImage)
+      setErrors((prev) => ({ ...prev, coverImage: null }));
   };
 
   // ── Editor change ────────────────────────────────────────────────────────────
@@ -245,76 +279,77 @@ const ArticleEditor = ({
   };
 
   // ── Save / Publish ────────────────────────────────────────────────────────────
-  const handleSave = async (publish = false) => {
-    setErrors({});
-    if (publish && !validateForPublish(true)) return;
+ const handleSave = async (publish = false) => {
+  setErrors({});
+  if (publish && !validateForPublish(true)) return;
 
-    setIsSaving(true);
+  setIsSaving(true);
 
-    try {
-      // 1. upload cover
-      let finalCoverUrl = articleToEdit?.cover_img || null;
-
-      if (coverFile) {
-        const uploaded = await uploadCoverApi(coverFile);
-        finalCoverUrl = uploaded?.url || null;
-      }
-
-      // 2. prepare content
-      const contentObj = editorState
-        ? editorState.toJSON()
-        : articleToEdit?.content_en || {
-            root: {
-              children: [],
-              type: "root",
-              version: 1,
-            },
-          };
-
-      // ✅ 3. build payload with article_type_id (UUID)
-      const payload = {
-        title_en: title.trim(),
-        title_ar: title.trim(),
-        excerpt_en: excerpt.trim(),
-        excerpt_ar: excerpt.trim(),
-        content_en: contentObj,
-        content_ar: contentObj,
-        status: publish ? "PUBLISHED" : "DRAFT",
-        cover_img: finalCoverUrl || null,
-        
-        
-          type: type,
-
-        
-        ...(selectedTags.length > 0 && { tags: selectedTags }),
-      };
-
-      console.log("🚀 FINAL PAYLOAD:", payload);
-
-      // 4. API call
-      if (isEditMode) {
-        await updateArticleApi(articleToEdit.article_id, payload);
-      } else {
-        await createArticleApi(payload);
-      }
-
-      showToast(
-        publish
-          ? "🎉 Article published successfully!"
-          : "📝 Draft saved successfully!",
-        "success"
-      );
-
-      setStatus(publish ? "PUBLISHED" : "DRAFT");
-      if (finalCoverUrl) setCoverImage(finalCoverUrl);
-      setCoverFile(null);
-    } catch (err) {
-      console.error("❌ Save Error:", err);
-      showToast(err.message || "Something went wrong", "error");
-    } finally {
-      setIsSaving(false);
+  try {
+    // 1. upload cover
+    let finalCoverUrl = articleToEdit?.cover_img || null;
+    if (coverFile) {
+      const uploaded = await uploadCoverApi(coverFile);
+      finalCoverUrl = uploaded?.url || null;
     }
-  };
+
+    // 2. prepare content
+    const contentObj = editorState
+      ? editorState.toJSON()
+      : articleToEdit?.content_en || {
+          root: {
+            children: [],
+            type: "root",
+            version: 1,
+          },
+        };
+
+    // 3. build payload
+    const payload = {
+      title_en: title.trim(),
+      title_ar: title.trim(),
+      excerpt_en: excerpt.trim(),
+      excerpt_ar: excerpt.trim(),
+      content_en: contentObj,
+      content_ar: contentObj,
+      status: publish ? "PUBLISHED" : "DRAFT",
+      cover_img: finalCoverUrl || null,
+      
+      // ✅ الطريقة البسيطة: نرسل الـ UUID المقلد مباشرة
+      article_type_id: articleType.name === "BLOG" 
+        ? "11111111-1111-1111-1111-111111111111" 
+        : "22222222-2222-2222-2222-222222222222",
+      
+      // نرسل الاسم ك backup
+      type: articleType.name,
+
+      ...(selectedTags.length > 0 && { tags: selectedTags }),
+    };
+
+    console.log("🚀 FINAL PAYLOAD:", payload);
+
+    // 4. API call
+    if (isEditMode) {
+      await updateArticleApi(articleToEdit.article_id, payload);
+    } else {
+      await createArticleApi(payload);
+    }
+
+    showToast(
+      publish ? "🎉 Article published successfully!" : "📝 Draft saved successfully!",
+      "success"
+    );
+
+    setStatus(publish ? "PUBLISHED" : "DRAFT");
+    if (finalCoverUrl) setCoverImage(finalCoverUrl);
+    setCoverFile(null);
+  } catch (err) {
+    console.error("❌ Save Error:", err);
+    showToast(err.message || "Something went wrong", "error");
+  } finally {
+    setIsSaving(false);
+  }
+};
 
   const metaBtn = (active, colorClass) =>
     `px-4 py-1.5 text-xs font-semibold rounded-lg border-2 transition-all duration-150 select-none ${
@@ -342,10 +377,7 @@ const ArticleEditor = ({
 
   const getInitialContent = () => {
     try {
-      let raw =
-        articleToEdit?.content ||
-        articleToEdit?.content_en ||
-        null;
+      let raw = articleToEdit?.content || articleToEdit?.content_en || null;
 
       if (!raw) {
         return {
@@ -441,7 +473,9 @@ const ArticleEditor = ({
                   }}
                   placeholder="Enter your article title…"
                   className={`w-full border rounded-xl px-4 py-2.5 text-gray-900 text-lg font-medium placeholder-gray-400 transition-all outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                    errors.title ? "border-red-500 bg-red-50" : "border-gray-200"
+                    errors.title
+                      ? "border-red-500 bg-red-50"
+                      : "border-gray-200"
                   }`}
                 />
                 {errors.title && (
@@ -496,7 +530,9 @@ const ArticleEditor = ({
                   ) : (
                     <span></span>
                   )}
-                  <p className="text-xs text-gray-400">{excerpt.length}/200</p>
+                  <p className="text-xs text-gray-400">
+                    {excerpt.length}/200
+                  </p>
                 </div>
               </div>
 
@@ -510,7 +546,10 @@ const ArticleEditor = ({
                     errors.content ? "ring-2 ring-red-500" : ""
                   }`}
                 >
-                  <LexicalComposer initialConfig={initialConfig} key={articleToEdit?.article_id || "new"}>
+                  <LexicalComposer
+                    initialConfig={initialConfig}
+                    key={articleToEdit?.article_id || "new"}
+                  >
                     <div className="border border-gray-200 rounded-xl shadow-sm overflow-visible bg-white">
                       <ToolbarPlugin />
                       <div className="relative rounded-b-xl">
@@ -532,12 +571,18 @@ const ArticleEditor = ({
                         <CheckListPlugin />
                         <LinkPlugin />
                         <AutoLinkPlugin matchers={AUTO_LINK_MATCHERS} />
-                        <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
+                        <MarkdownShortcutPlugin
+                          transformers={TRANSFORMERS}
+                        />
                         <OnChangePlugin onChange={handleEditorChange} />
                         <ImagePlugin />
-                        {isEditMode && (articleToEdit?.content_en || articleToEdit?.content) && (
-                          <PreFillPlugin initialContent={getInitialContent()} />
-                        )}
+                        {isEditMode &&
+                          (articleToEdit?.content_en ||
+                            articleToEdit?.content) && (
+                            <PreFillPlugin
+                              initialContent={getInitialContent()}
+                            />
+                          )}
                       </div>
                       <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-t border-gray-100 rounded-b-xl text-xs text-gray-400">
                         <span>{wordCount} words</span>
@@ -561,7 +606,15 @@ const ArticleEditor = ({
                   className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl font-medium hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-60"
                 >
                   {isSaving ? (
-                    <svg className="animate-spin" width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <svg
+                      className="animate-spin"
+                      width={16}
+                      height={16}
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
                       <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                     </svg>
                   ) : (
@@ -580,7 +633,9 @@ const ArticleEditor = ({
                 </button>
 
                 <button
-                  onClick={() => (onClose ? onClose() : window.history.back())}
+                  onClick={() =>
+                    onClose ? onClose() : window.history.back()
+                  }
                   className="flex items-center gap-2 text-gray-500 px-5 py-2.5 rounded-xl font-medium hover:bg-gray-100 active:scale-95 transition-all"
                 >
                   Cancel
@@ -595,26 +650,38 @@ const ArticleEditor = ({
                   Metadata
                 </h3>
                 <div>
-                  <p className="text-xs font-semibold text-gray-500 mb-2">Type</p>
+                  <p className="text-xs font-semibold text-gray-500 mb-2">
+                    Type
+                  </p>
                   <div className="flex gap-2">
-                    <button
-                      onClick={() => setType("BLOG")}
-                      className={metaBtn(
-                        type === "BLOG",
-                        "border-blue-300 bg-blue-50 text-blue-700"
-                      )}
-                    >
-                      Blog
-                    </button>
-                    <button
-                      onClick={() => setType("ACTUALITE")}
-                      className={metaBtn(
-                        type === "ACTUALITE",
-                        "border-purple-300 bg-purple-50 text-purple-700"
-                      )}
-                    >
-                      Actualité
-                    </button>
+                    {/* ✅ FIXED: look up the UUID from the loaded types array */}
+{/* زر BLOG */}
+<button 
+  onClick={() => {
+    const blogType = types.find(t => t.name_en?.toUpperCase() === "BLOG");
+    setArticleType({ name: "BLOG", id: blogType?.article_type_id || blogType?.id || null });
+  }}
+  className={metaBtn(
+    articleType.name === "BLOG", // ← غيّر type إلى articleType.name
+    "border-blue-300 bg-blue-50 text-blue-700"
+  )}
+>
+  Blog
+</button>
+
+{/* زر ACTUALITÉ */}
+<button 
+  onClick={() => {
+    const actuType = types.find(t => t.name_en?.toUpperCase() === "ACTUALITE");
+    setArticleType({ name: "ACTUALITE", id: actuType?.article_type_id || actuType?.id || null });
+  }}
+  className={metaBtn(
+    articleType.name === "ACTUALITE", // ← غيّر type إلى articleType.name
+    "border-purple-300 bg-purple-50 text-purple-700"
+  )}
+>
+  Actualité
+</button>
                   </div>
                 </div>
                 <div>
@@ -645,7 +712,9 @@ const ArticleEditor = ({
                 <div className="flex items-center gap-2 text-xs">
                   <span
                     className={`w-2 h-2 rounded-full ${
-                      status === "PUBLISHED" ? "bg-green-400" : "bg-yellow-400"
+                      status === "PUBLISHED"
+                        ? "bg-green-400"
+                        : "bg-yellow-400"
                     }`}
                   />
                   <span className="text-gray-500">
@@ -706,8 +775,12 @@ const ArticleEditor = ({
                   ) : (
                     <div className="h-full flex flex-col items-center justify-center gap-2 text-gray-400 group-hover:text-blue-500 transition-colors">
                       <ImageIcon size={22} />
-                      <span className="text-xs font-medium">Click to upload</span>
-                      <span className="text-xs opacity-60">PNG, JPG, WebP</span>
+                      <span className="text-xs font-medium">
+                        Click to upload
+                      </span>
+                      <span className="text-xs opacity-60">
+                        PNG, JPG, WebP
+                      </span>
                     </div>
                   )}
                 </label>
@@ -722,7 +795,10 @@ const ArticleEditor = ({
                       setCoverImage(null);
                       setCoverFile(null);
                       if (errors.coverImage)
-                        setErrors((prev) => ({ ...prev, coverImage: null }));
+                        setErrors((prev) => ({
+                          ...prev,
+                          coverImage: null,
+                        }));
                     }}
                     className="mt-2 flex items-center gap-1 text-xs text-red-400 hover:text-red-600 transition-colors"
                   >
@@ -737,7 +813,9 @@ const ArticleEditor = ({
                 </h3>
                 <div className="flex justify-between">
                   <span>Words</span>
-                  <span className="font-medium text-gray-700">{wordCount}</span>
+                  <span className="font-medium text-gray-700">
+                    {wordCount}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span>Reading time</span>

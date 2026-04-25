@@ -1,7 +1,7 @@
 {
-  "name": "pfe",
+  "name": "apex-pfe",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -19,7 +19,7 @@
     "@lexical/selection": "^0.42.0",
     "@lexical/utils": "^0.42.0",
     "@radix-ui/react-slot": "^1.2.4",
-    "axois": "^0.0.1-security",
+    "axios": "^1.15.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cors": "^2.8.6",

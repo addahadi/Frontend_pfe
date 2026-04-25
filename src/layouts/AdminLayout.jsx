@@ -1,5 +1,5 @@
 import { useLocation, Link, Outlet } from "react-router-dom";
-import { LayoutDashboard, Users, CreditCard, FileText, FolderOpen, Settings, Zap, Bot } from "lucide-react";
+import { LayoutDashboard, Users, CreditCard, FileText, FolderOpen, Package,Settings, Zap, Bot } from "lucide-react";
 import Avatar from "../shared/components/ui/Avatar.jsx";
 import { P } from "../shared/lib/design-tokens.js";
 
@@ -10,6 +10,7 @@ const NAV = [
   { path: "/admin/subscriptions", icon: <CreditCard size={16}/>,      label: "Subscriptions" },
   { path: "/admin/articles",      icon: <FileText size={16}/>,        label: "Articles"      },
   { path: "/admin/modules",       icon: <FolderOpen size={16}/>,      label: "Modules"       },
+  { path: "/admin/resources", icon: <Package size={16}/>, label: "Resources" },
   { path: "/admin/settings",      icon: <Settings size={16}/>,        label: "Settings"      },
 ];
 

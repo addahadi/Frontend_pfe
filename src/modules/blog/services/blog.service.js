@@ -1,314 +1,388 @@
-// blog.service.js
-import { 
-  articles, 
-  tags, 
-  likes, 
-  saves, 
-  syncToStorage 
-} from "../mocks/mock";
- 
-// Use the exported arrays directly - no copies!
-// This ensures all modifications affect the same references
+// src/services/blog.service.js
 
-// ─── Helper Functions ───────────────────────────────────────────────────────
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
-const incrementTagCount = (tagId) => {
-  const tag = tags.find((t) => t.id === tagId);
-  if (tag) tag.count += 1;
+const getToken = () => localStorage.getItem("token");
+
+// ── خطأ API مخصص ────────────────────────────────────────────────────────────
+class ApiError extends Error {
+  constructor(message, status) {
+    super(message);
+    this.status = status;
+  }
+}
+
+/**
+ * publicFetch — بدون توثيق، يعمل مع CORS wildcard (*)
+ * مستخدم في: المقالات، الوسوم، القراءة العامة
+ */
+const publicFetch = async (endpoint, options = {}) => {
+  const url = `${API_BASE}${endpoint}`;
+
+  const headers = {
+    "Content-Type": "application/json",
+    ...options.headers,
+  };
+
+  try {
+    const res = await fetch(url, { ...options, headers });
+
+    let data = {};
+    try { data = await res.json(); } catch { /* non-JSON */ }
+
+    if (!res.ok) {
+      throw new ApiError(
+        data?.error?.message || `Request failed: ${res.status}`,
+        res.status
+      );
+    }
+
+    return data;
+  } catch (err) {
+    if (err.name === "TypeError" && err.message.includes("fetch")) {
+      throw new Error("Network error: Unable to connect to server");
+    }
+    throw err;
+  }
 };
 
-const decrementTagCount = (tagId) => {
-  const tag = tags.find((t) => t.id === tagId);
-  if (tag && tag.count > 0) tag.count -= 1;
-}; 
- 
-export const getTagsWithCount = () => {
-  return tags.map((tag) => ({
-    ...tag,
-    count: articles.filter(
-      (a) => Array.isArray(a.tags) && a.tags.includes(tag.id)
-    ).length,
-  }));
+/**
+ * apiFetch — مع Bearer token
+ * مستخدم في: كل نقاط /admin/*
+ * ⚠️ يتطلب أن يضبط الـ backend Access-Control-Allow-Origin للأصل الحقيقي
+ *    وليس (*) وأن يضع Access-Control-Allow-Credentials: true
+ */
+const apiFetch = async (endpoint, options = {}) => {
+  const url   = `${API_BASE}${endpoint}`;
+  const token = getToken();
+
+  const headers = {
+    "Content-Type": "application/json",
+    ...(token && { Authorization: `Bearer ${token}` }),
+    ...options.headers,
+  };
+
+  try {
+    const res = await fetch(url, { ...options, headers });
+
+    let data = {};
+    try { data = await res.json(); } catch { /* non-JSON */ }
+
+    if (!res.ok) {
+      if (res.status === 401) {
+        localStorage.removeItem("token");
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("auth:unauthorized", {
+              detail: { message: data?.error?.message || "Unauthorized" },
+            })
+          );
+        }
+        throw new Error(data?.error?.message || "Unauthorized - Please login again");
+      }
+      throw new ApiError(
+        data?.error?.message || `Request failed: ${res.status}`,
+        res.status
+      );
+    }
+
+    return data;
+  } catch (err) {
+    if (err.name === "TypeError" && err.message.includes("fetch")) {
+      throw new Error("Network error: Unable to connect to server");
+    }
+    throw err;
+  }
 };
- 
+
+// ── مساعدات ───────────────────────────────────────────────────────────────────
+const extractData       = (res) => res.data?.data   || res.data   || [];
+const extractPagination = (res) => res.data?.pagination || res.pagination || null;
+const extractItem       = (res) => res.data?.data   || res.data   || null;
+
+// ── كاش الوسوم ────────────────────────────────────────────────────────────────
+let tagsCache = [];
+
+const mapTag = (t) => ({
+  id:      t.tag_id  || t.id,
+  name:    t.name_en || t.name,
+  name_en: t.name_en,
+  name_ar: t.name_ar,
+  count:   Number(t.count) || 0,
+});
+
+const mapArticle = (article, lang = "en") => {
+  const isAr = lang === "ar";
+  return {
+    ...article,
+    article_id:   article.article_id || article.id,
+    title:        isAr ? (article.title_ar   || article.title)   : (article.title_en   || article.title),
+    excerpt:      isAr ? (article.excerpt_ar  || article.excerpt) : (article.excerpt_en  || article.excerpt),
+    content:      isAr ? (article.content_ar  || article.content) : (article.content_en  || article.content),
+type:
+  article.type ||
+  article.type_name_en ||
+  "BLOG",
+    tags:         article.tags?.map((t) => t.tag_id || t.id || t) || [],
+    tagObjects:   article.tags || [],
+    likesCount:   Number(article.likesCount  ?? article.likes_count  ?? 0),
+    savesCount:   Number(article.savesCount  ?? article.saves_count  ?? 0),
+    created_at:   article.created_at,
+    updated_at:   article.updated_at,
+    published_at: article.published_at,
+    cover_img:    article.cover_img,
+    slug:         article.slug,
+    status:       article.status,
+  };
+};
+
+// ─── APIs العامة (لا تحتاج توثيق) ────────────────────────────────────────────
+
+export const fetchArticles = async (params = {}) => {
+  const query        = new URLSearchParams({ status: "PUBLISHED", ...params }).toString();
+  const res          = await publicFetch(`/articles?${query}`);
+  const articlesData = extractData(res);
+  const pagination   = extractPagination(res) || {
+    page: 1, limit: 9, total: articlesData.length, totalPages: 1,
+  };
+  const articles = Array.isArray(articlesData)
+    ? articlesData.map((a) => mapArticle(a))
+    : [];
+  return { data: articles, pagination };
+};
+
+export const fetchArticleBySlug = async (slug) => {
+  const res         = await publicFetch(`/articles/slug/${slug}`);
+  const articleData = extractItem(res);
+  return articleData ? mapArticle(articleData) : null;
+};
+
+export const fetchArticleById = async (id) => {
+  const res         = await publicFetch(`/articles/${id}`);
+  const articleData = extractItem(res);
+  return articleData ? mapArticle(articleData) : null;
+};
+
+export const fetchTags = async () => {
+  const res      = await apiFetch("/tags");
+  const tagsData = extractData(res);
+  tagsCache = Array.isArray(tagsData) ? tagsData.map(mapTag) : [];
+  return tagsCache;
+};
+
+export const fetchRelatedArticles = async (articleId, limit = 3) => {
+  const res          = await publicFetch(`/articles/${articleId}/related?limit=${limit}`);
+  const articlesData = extractData(res);
+  const meta         = res.data?.meta || res.meta || { is_fallback: false, total_matches: 0 };
+  const articles     = Array.isArray(articlesData)
+    ? articlesData.map((a) => ({
+        ...mapArticle(a),
+        readingTime:     a.reading_time,
+        sharedTags:      a.shared_tags       || [],
+        sharedTagsCount: a.shared_tags_count || 0,
+        relevanceScore:  a.relevance_score   || 0,
+      }))
+    : [];
+  return { data: articles, meta };
+};
+
+export const toggleLike = async (articleId) => {
+  const token = getToken();
+  const res = await publicFetch(`/articles/${articleId}/likes`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  return extractItem(res) || res.data;
+};
+
+export const toggleSave = async (articleId) => {
+  const token = getToken();
+  const res = await publicFetch(`/articles/${articleId}/saves`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  return extractItem(res) || res.data;
+};
+
+// ─── مساعدات للتصدير ──────────────────────────────────────────────────────────
+
+export const getTags = () => tagsCache;
+
+export const getTagName = (tagId) => {
+  const tag = tagsCache.find((t) => t.id === tagId);
+  return tag?.name || tagId;
+};
+
+export const getPublishedArticles = async (params) => {
+  const res = await fetchArticles(params);
+  return res.data;
+};
+
+export const getLikesCount = (articleOrId) => {
+  if (typeof articleOrId === "object" && articleOrId !== null) {
+    return articleOrId.likesCount ?? 0;
+  }
+  return 0;
+};
+
+export const getRelatedArticles = async (currentArticleId, _currentTags, limit) => {
+  const res = await fetchRelatedArticles(currentArticleId, limit);
+  return res.data;
+};
+
+export const getRecentArticles = async (excludeId, limit = 3) => {
+  const res = await fetchArticles({ limit: limit + 1, page: 1 });
+  return res.data
+    .filter((a) => a.article_id !== excludeId)
+    .slice(0, limit)
+    .map((a) => ({
+      ...a,
+      readingTime:     Math.max(1, Math.round(JSON.stringify(a.content || {}).length / 1000)),
+      relevanceScore:  0,
+      sharedTagsCount: 0,
+      sharedTags:      [],
+    }));
+};
 
 export const isLexicalJson = (content) => {
+  if (!content) return false;
   try {
-    const parsed = JSON.parse(content);
-    return parsed?.root !== undefined;
+    const parsed = typeof content === "string" ? JSON.parse(content) : content;
+    return (
+      parsed?.root !== undefined &&
+      typeof parsed.root === "object" &&
+      (Array.isArray(parsed.root.children) || parsed.root.children === undefined)
+    );
   } catch {
     return false;
   }
 };
 
-// Auto-sync helper
-const persist = () => {
-  syncToStorage();
-};
+// ─── APIs الإدارة (تحتاج توثيق) ──────────────────────────────────────────────
 
-// ─── Article Services ─────────────────────────────────────────────────────────
-
-export const createArticle = (data) => {
-  const newArticle = {
-    article_id: `a${Date.now()}`,
-    title: data.title,
-    slug: data.slug,
-    type: data.type,
-    excerpt: data.excerpt,
-    cover_img: data.cover_img || "",
-    content: data.content || "",
-    status: data.status || "DRAFT",
-    author_id: "u1",
-    tags: data.tags || [],
-    created_at: new Date().toISOString().split("T")[0],
+export const fetchAdminArticles = async (status = "ALL") => {
+  const res          = await apiFetch(`/admin/articles?status=${encodeURIComponent(status)}`);
+  const articlesData = extractData(res);
+  const pagination   = extractPagination(res) || {
+    page: 1, limit: 9, total: articlesData.length, totalPages: 1,
   };
-
-  // Modify the exported array directly
-  articles.unshift(newArticle);
-  
-  data.tags?.forEach((tagId) => incrementTagCount(tagId));
-  
-  persist();
-  
-  return newArticle;
+  const articles = Array.isArray(articlesData)
+    ? articlesData.map((a) => mapArticle(a))
+    : [];
+  return { data: articles, pagination };
 };
 
-export const getArticles = () => {
-  return articles;
-};
+export const createArticleApi = async (payload) => {
+  const res = await apiFetch("/articles", {
+    method: "POST",
+    body: JSON.stringify({
+      title_en:        payload.title_en   || payload.title,
+      title_ar:        payload.title_ar   || payload.title,
+      excerpt_en:      payload.excerpt_en || payload.excerpt,
+      excerpt_ar:      payload.excerpt_ar || payload.excerpt,
+      content_en:      payload.content_en || payload.content,
+      content_ar:      payload.content_ar || payload.content,
+      cover_img:       payload.cover_img,
+      status:          payload.status, 
+            type:            payload.type,           // ← جديد
 
-export const getPublishedArticles = () => {
-  return articles.filter((a) => a.status === "PUBLISHED");
-};
-
-export const deleteArticle = (id) => {
-  const article = articles.find((a) => a.article_id === id);
-  
-  article?.tags?.forEach((tagId) => decrementTagCount(tagId));
-  
-  // Modify array in place
-  const index = articles.findIndex((a) => a.article_id === id);
-  if (index > -1) articles.splice(index, 1);
-  
-  persist();
-  
-  return articles;
-};
-
-export const updateArticle = (id, data) => {
-  const index = articles.findIndex((a) => a.article_id === id);
-  if (index === -1) return null;
-
-  const oldArticle = articles[index];
-  const oldTags = oldArticle.tags || [];
-  const newTags = data.tags || [];
-
-  oldTags.forEach((tagId) => {
-    if (!newTags.includes(tagId)) decrementTagCount(tagId);
+      article_type_id: payload.article_type_id || undefined,
+      tags:            payload.tags,
+    }),
   });
-
-  newTags.forEach((tagId) => {
-    if (!oldTags.includes(tagId)) incrementTagCount(tagId);
-  });
-
-  articles[index] = {
-    ...oldArticle,
-    ...data,
-    updated_at: new Date().toISOString().split("T")[0],
-  };
-
-  persist();
-
-  return articles[index];
+  return extractItem(res) || res.data;
 };
 
-export const toggleLike = (userId, articleId) => {
-  const index = likes.findIndex(
-    (l) => l.user_id === userId && l.article_id === articleId
+export const updateArticleApi = async (id, payload) => {
+  const allowedFields = [
+    "title_en", "title_ar",
+    "excerpt_en", "excerpt_ar",
+    "content_en", "content_ar",
+    "status", "cover_img",
+    "article_type_id", "tags","type",
+  ];
+
+  const body = Object.fromEntries(
+    Object.entries(payload).filter(([key]) => allowedFields.includes(key))
   );
 
-  if (index !== -1) {
-    likes.splice(index, 1);
-  } else {
-    likes.push({
-      like_id: `l${Date.now()}`,
-      user_id: userId,
-      article_id: articleId,
-    });
+  const res = await apiFetch(`/articles/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+
+  return extractItem(res) || res.data;
+};
+
+export const deleteArticleApi = async (id) => {
+  await apiFetch(`/articles/${id}`, { method: "DELETE" });
+};
+
+export const saveDraftApi = async (id, payload) => {
+  const res = await apiFetch(`/articles/${id}/draft`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      title_en:   payload.title_en   || payload.title,
+      title_ar:   payload.title_ar   || payload.title,
+      excerpt_en: payload.excerpt_en || payload.excerpt,
+      excerpt_ar: payload.excerpt_ar || payload.excerpt,
+      content_en: payload.content_en || payload.content,
+      content_ar: payload.content_ar || payload.content,
+      cover_img:  payload.cover_img,
+      status:     payload.status,
+      tags:       payload.tags,
+    }),
+  });
+  return extractItem(res) || res.data;
+};
+
+export const uploadCoverApi = async (file) => {
+  const formData = new FormData();
+  formData.append("cover", file);
+
+  const token   = getToken();
+  const headers = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res  = await fetch(`${API_BASE}/admin/upload/cover`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error?.message || "Upload failed");
+  return extractItem(data) || data.data;
+};
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+
+export const adminLogin = async (credentials) => {
+  const url = `${API_BASE}/admin/login`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(credentials),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error?.message || "Login failed");
+  return data;
+};
+
+export const adminLogout = () => {
+  localStorage.removeItem("token");
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("auth:logout"));
   }
-
-  persist();
 };
 
-export const toggleSave = (userId, articleId) => {
-  const index = saves.findIndex(
-    (s) => s.user_id === userId && s.article_id === articleId
-  );
+// ─── إدارة الوسوم ─────────────────────────────────────────────────────────────
 
-  if (index !== -1) {
-    saves.splice(index, 1);
-  } else {
-    saves.push({
-      save_id: `s${Date.now()}`,
-      user_id: userId,
-      article_id: articleId,
-    });
-  }
-
-  persist();
-};
-
-export const getArticlesWithDetails = () => {
-  return articles.map((article) => {
-    const tagNames = article.tags.map((tagId) => {
-      const found = tags.find((t) => t.id === tagId);
-      return found ? found.name : tagId;
-    });
-
-    const likesCount = likes.filter((l) => l.article_id === article.article_id).length;
-    const savesCount = saves.filter((s) => s.article_id === article.article_id).length;
-
-    return {
-      ...article,
-      tags: tagNames,
-      likes: likesCount,
-      saves: savesCount,
-    };
-  });
-};
-
-// ─── Tag Services ───────────────────────────────────────────────────────────
-
-export const getTags = () => {
-  return tags.map((tag) => ({
-    ...tag,
-    count: articles.filter(
-      (a) => Array.isArray(a.tags) && a.tags.includes(tag.id)
-    ).length,
-  }));
-};
-
-export const getTagName = (tagId) => {
-  return tags.find((t) => t.id === tagId)?.name || tagId;
-};
-
-export const addTag = (name) => {
-  const newTag = {
-    id: `t${Date.now()}`,
-    name,
-    count: 0,
-  };
-
-  tags.unshift(newTag);
-  
-  persist();
-  
-  return newTag;
-};
-
-export const deleteTag = (id) => {
-  // Update articles in place
-  articles.forEach((article, idx) => {
-    articles[idx] = {
-      ...article,
-      tags: article.tags?.filter((tagId) => tagId !== id) || [],
-    };
+export const createTagApi = (name_en, name_ar) =>
+  apiFetch("/tags", {
+    method: "POST",
+    body: JSON.stringify({ name_en, name_ar }),
   });
 
-  const tagIndex = tags.findIndex((t) => t.id === id);
-  if (tagIndex > -1) tags.splice(tagIndex, 1);
-  
-  persist();
-  
-  return tags;
-};
-
-// ─── Like/Save Services ─────────────────────────────────────────────────────
-
-export const getLikesCount = (articleId) => {
-  return likes.filter((l) => l.article_id === articleId).length;
-};
-
-export const getSavesCount = (articleId) => {
-  return saves.filter((s) => s.article_id === articleId).length;
-}; 
-
-// ─── Related Articles Service ────────────────────────────────────────────────
-
-/**
- * Find related articles based on shared tags with relevance scoring
- * @param {string} currentArticleId - Article to exclude from results
- * @param {string[]} currentTags - Array of tag IDs to match against
- * @param {number} limit - Max results to return
- * @returns {Array} Articles sorted by relevance (shared tags + recency)
- */
-export const getRelatedArticles = (currentArticleId, currentTags = [], limit = 3) => {
-  if (!currentTags.length) return [];
-  
-  const published = getPublishedArticles().filter(
-    (a) => a.article_id !== currentArticleId
-  );
-  
-  // Score each article by shared tags and recency
-  const scored = published.map((article) => {
-    const articleTags = article.tags || [];
-    
-    // Count matching tags
-    const sharedTags = articleTags.filter((tagId) => 
-      currentTags.includes(tagId)
-    );
-    
-    const sharedCount = sharedTags.length;
-    
-    // Recency bonus (0.5 points if within last 30 days)
-    const daysOld = Math.floor(
-      (Date.now() - new Date(article.created_at).getTime()) / (1000 * 60 * 60 * 24)
-    );
-    const recencyBonus = daysOld < 30 ? 0.5 : 0;
-    
-    // Calculate reading time
-    const contentLength = typeof article.content === 'string' 
-      ? article.content.length 
-      : JSON.stringify(article.content).length;
-    const readingTime = Math.max(1, Math.round(contentLength / 1000));
-    
-    // Get tag names for display
-    const sharedTagNames = sharedTags.slice(0, 2).map(getTagName);
-    
-    return {
-      ...article,
-      relevanceScore: sharedCount + recencyBonus,
-      sharedTagsCount: sharedCount,
-      sharedTags: sharedTagNames,
-      readingTime,
-    };
-  });
-  
-  // Sort by score descending, then by date
-  return scored
-    .filter((a) => a.relevanceScore > 0)
-    .sort((a, b) => {
-      if (b.relevanceScore !== a.relevanceScore) {
-        return b.relevanceScore - a.relevanceScore;
-      }
-      return new Date(b.created_at) - new Date(a.created_at);
-    })
-    .slice(0, limit);
-};
-
-/**
- * Fallback: Get recent articles when no tag matches found
- */
-export const getRecentArticles = (excludeId, limit = 3) => {
-  return getPublishedArticles()
-    .filter((a) => a.article_id !== excludeId)
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-    .slice(0, limit)
-    .map((article) => ({
-      ...article,
-      readingTime: Math.max(1, Math.round(JSON.stringify(article.content).length / 1000)),
-      relevanceScore: 0,
-      sharedTagsCount: 0,
-      sharedTags: [],
-    }));
+export const deleteTagApi = async (id) => {
+  await apiFetch(`/tags/${id}`, { method: "DELETE" });
 };

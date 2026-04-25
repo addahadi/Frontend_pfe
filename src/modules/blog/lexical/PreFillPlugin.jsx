@@ -1,23 +1,29 @@
-import { useRef,useEffect } from "react";
-import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"; 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Pre-fill Plugin — loads existing content when editing
-// ═══════════════════════════════════════════════════════════════════════════════
+import { useRef, useEffect } from "react";
+import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
+
 export default function PreFillPlugin({ initialContent }) {
   const [editor] = useLexicalComposerContext();
-  const didFill  = useRef(false);
+  const didFill = useRef(false);
 
   useEffect(() => {
     if (!initialContent || didFill.current) return;
+
     try {
-      const parsed = JSON.parse(initialContent);
-      if (parsed?.root) {
-        const state = editor.parseEditorState(initialContent);
+      let content = initialContent;
+
+      // ✅ إذا كان string → parse
+      if (typeof content === "string") {
+        content = JSON.parse(content);
+      }
+
+      // ✅ تحقق أنه Lexical JSON صحيح
+      if (content?.root) {
+        const state = editor.parseEditorState(content);
         editor.setEditorState(state);
         didFill.current = true;
       }
-    } catch {
-      // not a valid Lexical JSON — leave blank
+    } catch (err) {
+      console.error("❌ PreFill error:", err);
     }
   }, [editor, initialContent]);
 

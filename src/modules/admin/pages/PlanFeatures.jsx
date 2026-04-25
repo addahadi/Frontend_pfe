@@ -1,12 +1,27 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Search, Edit2, Trash2, Plus, Save, X } from 'lucide-react';
-import { initialPlans } from './mock.js'; // <-- Import the mock data here
+import { planService } from '../../auth/services/plan.service';
 
 const PlanFeatures = () => {
-  // Use the imported mock data as the initial state
-  const [plans, setPlans] = useState(initialPlans);
+  const [plans, setPlans] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [view, setView] = useState('list'); // 'list' | 'form'
   const [editingPlan, setEditingPlan] = useState(null);
+
+  const fetchPlans = async () => {
+    try {
+      const response = await planService.getPlans();
+      setPlans(response.data || []);
+    } catch (err) {
+      console.error("Error fetching plans:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPlans();
+  }, []);
 
   const handleEdit = (plan) => {
     setEditingPlan(plan);
@@ -18,17 +33,29 @@ const PlanFeatures = () => {
     setView('form');
   };
 
-  const handleDelete = (planName) => {
-    setPlans(plans.filter(p => p.name !== planName));
+  const handleDelete = async (id) => {
+    if (window.confirm('Are you sure?')) {
+      try {
+        await planService.deletePlan(id);
+        setPlans(plans.filter(p => p.id !== id));
+      } catch (err) {
+        console.error("Error deleting plan:", err);
+      }
+    }
   };
 
-  const handleSavePlan = (savedPlan, originalName) => {
-    if (originalName) {
-      setPlans(plans.map(p => p.name === originalName ? savedPlan : p));
-    } else {
-      setPlans([...plans, savedPlan]);
+  const handleSavePlan = async (savedPlan, originalId) => {
+    try {
+      if (originalId) {
+        await planService.updatePlan(originalId, savedPlan);
+      } else {
+        await planService.createPlan(savedPlan);
+      }
+      fetchPlans();
+      setView('list');
+    } catch (err) {
+      console.error("Error saving plan:", err);
     }
-    setView('list');
   };
 
   if (view === 'form') {

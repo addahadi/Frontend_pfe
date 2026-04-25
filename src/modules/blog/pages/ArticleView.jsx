@@ -1,157 +1,68 @@
-import React, { useState, useEffect,  } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
-import {Link as LinkIcon,
-
-  ChevronLeft,
-} from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import {
-  getLikesCount,
-  getPublishedArticles,
-
+  fetchArticleBySlug,
+  toggleLike,
+  toggleSave,
+  fetchTags,
 } from "../services/blog.service";
-import { createEditor } from "lexical";
-import { $generateHtmlFromNodes } from "@lexical/html";
-import { HeadingNode, QuoteNode } from "@lexical/rich-text";
-import { ListNode, ListItemNode } from "@lexical/list";
-import { CodeNode, CodeHighlightNode } from "@lexical/code";
-import { AutoLinkNode, LinkNode } from "@lexical/link";
-import { ImageNode } from "../lexical/ImageNode"; 
-import { isLexicalJson,} from "../utils/blog.utils"; 
-import { Hero , TagList ,RelatedArticles ,PopularTags ,ShareSection } from "../components/component"; 
+import { isLexicalJson } from "../utils/blog.utils";
+import { Hero, TagList, RelatedArticles, PopularTags, ShareSection } from "../components/component";
 
-
-// ── Hook: converts raw content (JSON or HTML) → HTML string ─────────────────
-// Fix: move setState into a microtask / setTimeout so it never fires
-// synchronously inside the effect body, eliminating both "cascading setState"
-// warnings while keeping the conversion logic unchanged.
-const useRenderedContent = (rawContent) => {
-  const [html, setHtml] = useState("");
-
-  useEffect(() => {
-    if (!rawContent) return;
-
-    // Plain HTML — defer the setState so it isn't synchronous in the effect
-    if (!isLexicalJson(rawContent)) {
-      const id = setTimeout(() => setHtml(rawContent), 0);
-      return () => clearTimeout(id);
-    }
-
-    // Lexical JSON — convert to HTML (includes ImageNode so <img> tags appear)
-    const editor = createEditor({
-      nodes: [
-        HeadingNode, QuoteNode,
-        ListNode, ListItemNode,
-        CodeNode, CodeHighlightNode,
-        AutoLinkNode, LinkNode,
-        ImageNode, // ← required so the serialiser knows about image nodes
-      ],
-    });
-
-    const parsed = editor.parseEditorState(rawContent);
-    editor.setEditorState(parsed);
-
-    // $generateHtmlFromNodes is synchronous; defer the setState call
-    let html = "";
-    editor.read(() => {
-      html = $generateHtmlFromNodes(editor, null);
-    });
-
-    const id = setTimeout(() => setHtml(html), 0);
-    return () => clearTimeout(id);
-  }, [rawContent]);
-
-  return html;
-};
-
-
-
-// ── Sub Components ───────────────────────────────────────────────────────────
-
-
-const ArticleContent = ({ article }) => {
-  const html = useRenderedContent(article.content);
-
-  return (
-    <div className="prose max-w-none">
-      <p className="text-base md:text-lg text-gray-600 italic leading-relaxed mb-6 border-l-4 border-blue-500 pl-4 bg-blue-50/50 py-2 pr-4 rounded-r-lg">
-        {article.excerpt}
-      </p>
-
-      <div
-        className="text-gray-700 leading-relaxed text-sm md:text-base
-          [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-gray-900 [&_h1]:mt-8 [&_h1]:mb-3
-          [&_h2]:text-xl  [&_h2]:font-bold [&_h2]:text-gray-800 [&_h2]:mt-6 [&_h2]:mb-2
-          [&_h3]:text-lg  [&_h3]:font-semibold [&_h3]:text-gray-700 [&_h3]:mt-5 [&_h3]:mb-2
-          [&_h4]:text-base [&_h4]:font-semibold [&_h4]:text-gray-700 [&_h4]:mt-4 [&_h4]:mb-1
-          [&_p]:mb-4 [&_p]:leading-relaxed
-          [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:mb-4 [&_ul]:space-y-1
-          [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-4 [&_ol]:space-y-1
-          [&_li]:leading-relaxed
-          [&_blockquote]:border-l-4 [&_blockquote]:border-blue-400 [&_blockquote]:pl-4
-          [&_blockquote]:italic [&_blockquote]:text-gray-500 [&_blockquote]:my-4
-          [&_code]:bg-gray-100 [&_code]:text-red-600 [&_code]:px-1.5 [&_code]:py-0.5
-          [&_code]:rounded [&_code]:text-sm [&_code]:font-mono
-          [&_pre]:bg-gray-900 [&_pre]:text-gray-100 [&_pre]:p-4 [&_pre]:rounded-xl
-          [&_pre]:overflow-x-auto [&_pre]:my-4 [&_pre]:text-sm
-          [&_a]:text-blue-600 [&_a]:underline [&_a]:hover:text-blue-800
-          [&_strong]:font-bold [&_strong]:text-gray-900
-          [&_em]:italic
-          [&_img]:max-w-full [&_img]:rounded-lg [&_img]:my-4 [&_img]:block"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-    </div>
-  );
-};
-
-
-
-
-
+// ── Global Cache: Prevents re-processing identical Lexical JSON ──────────────
+const lexicalCache = new Map();
 
 // ── Main Component ───────────────────────────────────────────────────────────
-
 const ArticleView = () => {
   const { id } = useParams();
 
-  // Fix warning 2: initialise loading as true so we never call setLoading(true)
-  // synchronously inside an effect body.
-  const [loading, setLoading]       = useState(true);
-  const [article, setArticle]       = useState(null); 
-  // eslint-disable-next-line 
-  const [allArticles, setAllArticles] = useState([]);
-  const [liked, setLiked]           = useState(false);
-  const [saved, setSaved]           = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [article, setArticle] = useState(null);
+  const [liked, setLiked] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [likesCount, setLikesCount] = useState(0);
 
   useEffect(() => {
-    // `loading` is already true from initial state — no synchronous setState here
-    const timer = setTimeout(() => {
-      const published = getPublishedArticles();
-      setAllArticles(published);
-
-      const found = published.find((a) => a.slug === id || a.article_id === id);
-      if (found) {
-        setArticle(found);
-        setLikesCount(getLikesCount(found.article_id));
-        setLiked(false);
-        setSaved(false);
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      try {
+        await fetchTags();
+        const art = await fetchArticleBySlug(id);
+        if (!cancelled) {
+          if (art) {
+            setArticle(art);
+            setLikesCount(art.likesCount);
+            setLiked(false);
+            setSaved(false);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load article:", err);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-
-      setLoading(false);
-    }, 300);
-
-    return () => clearTimeout(timer);
+    };
+    load();
+    return () => { cancelled = true; };
   }, [id]);
 
-  const handleLike = () => {
+  const handleLike = async () => {
     if (!article) return;
-    setLiked((prev) => !prev);
-    setLikesCount((prev) => (liked ? prev - 1 : prev + 1));
+    try {
+      const res = await toggleLike(article.article_id);
+      setLiked(res.liked);
+      setLikesCount(res.likesCount);
+    } catch (err) { console.error(err); }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!article) return;
-    setSaved((prev) => !prev);
+    try {
+      const res = await toggleSave(article.article_id);
+      setSaved(res.saved);
+    } catch (err) { console.error(err); }
   };
 
   if (loading) {
@@ -171,12 +82,8 @@ const ArticleView = () => {
         <div className="text-center">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Article Not Found</h2>
           <p className="text-gray-500 mb-4">The article you're looking for doesn't exist.</p>
-          <Link
-            to="/articles"
-            className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium"
-          >
-            <ChevronLeft size={18} />
-            Back to Articles
+          <Link to="/articles" className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium">
+            <ChevronLeft size={18} /> Back to Articles
           </Link>
         </div>
       </div>
@@ -186,27 +93,27 @@ const ArticleView = () => {
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
-        <Hero
-          article={article}
-          likesCount={likesCount}
-          isLiked={liked}
-          isSaved={saved}
-          onLike={handleLike}
-          onSave={handleSave}
-        />
+        <Hero article={article} likesCount={likesCount} isLiked={liked} isSaved={saved} onLike={handleLike} onSave={handleSave} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 md:p-8">
-              <ArticleContent article={article} />
-              <TagList tags={article.tags} />
-              <ShareSection title={article.title} />
-            </div>
+<div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 md:p-8">
+  {/* Article Type Badge */}
+  {article.type && (
+    <span className="inline-block bg-blue-600 text-white text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wide mb-4">
+      {article.type}
+    </span>
+  )}
+
+  <ArticleContent article={article} />
+  <TagList tags={article.tags} />
+  <ShareSection title={article.title} />
+</div>
           </div>
 
           <div className="lg:col-span-1">
             <div className="sticky top-6 space-y-6">
-             <RelatedArticles currentArticle={article} />
+              <RelatedArticles currentArticle={article} />
               <PopularTags />
             </div>
           </div>
@@ -214,6 +121,173 @@ const ArticleView = () => {
       </div>
     </div>
   );
+};
+
+// ── ArticleContent ───────────────────────────────────────────────────────────
+const ArticleContent = ({ article }) => {
+  const rawContent =
+    article.content ||
+    article.content_en ||
+    article.content_ar ||
+    "";
+
+  // 🔥 normalize (OBJECT → STRING)
+  const content =
+    typeof rawContent === "object"
+      ? JSON.stringify(rawContent)
+      : rawContent;
+
+  const hasContent = content && content.trim().length > 0;
+  const isHtml = hasContent && !content.trim().startsWith("{");
+
+  const renderedContent = useMemo(() => {
+    if (!hasContent) {
+      return (
+        <div className="text-gray-400 text-sm italic py-4">
+          No content available for this article.
+        </div>
+      );
+    }
+
+    if (isHtml) {
+      return (
+        <div
+          className="text-gray-700 leading-relaxed"
+          dangerouslySetInnerHTML={{ __html: content }}
+        />
+      );
+    }
+
+    return <LexicalContent content={content} />;
+  }, [content, hasContent, isHtml]);
+
+  return (
+    <div className="prose max-w-none">
+      <p className="text-base text-gray-600 italic mb-6">
+        {article.excerpt || "No excerpt available"}
+      </p>
+      {renderedContent}
+    </div>
+  );
+};
+
+// ── LexicalContent: Safe JSON → HTML renderer with validation & cache ────────
+const LexicalContent = ({ content }) => {
+  const [html, setHtml] = useState("");
+  const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let normalized = content;
+
+    // 🔥 OBJECT → STRING
+    if (typeof content === "object") {
+      normalized = JSON.stringify(content);
+    }
+
+    if (!normalized || !isLexicalJson(normalized)) {
+      setError(true);
+      setLoading(false);
+      return;
+    }
+
+    if (lexicalCache.has(normalized)) {
+      setHtml(lexicalCache.get(normalized));
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const renderLexical = async () => {
+      try {
+        const [
+          lexicalModule,
+          htmlModule,
+          richTextModule,
+          listModule,
+          codeModule,
+          linkModule,
+          imageModule,
+        ] = await Promise.all([
+          import("lexical"),
+          import("@lexical/html"),
+          import("@lexical/rich-text"),
+          import("@lexical/list"),
+          import("@lexical/code"),
+          import("@lexical/link"),
+          import("../lexical/ImageNode"),
+        ]);
+
+        const { createEditor } = lexicalModule;
+        const { $generateHtmlFromNodes } = htmlModule;
+        const { HeadingNode, QuoteNode } = richTextModule;
+        const { ListNode, ListItemNode } = listModule;
+        const { CodeNode, CodeHighlightNode } = codeModule;
+        const { AutoLinkNode, LinkNode } = linkModule;
+        const { ImageNode } = imageModule;
+
+        const editor = createEditor({
+          namespace: "ArticleView",
+          nodes: [
+            HeadingNode,
+            QuoteNode,
+            ListNode,
+            ListItemNode,
+            CodeNode,
+            CodeHighlightNode,
+            AutoLinkNode,
+            LinkNode,
+            ImageNode,
+          ],
+        });
+
+        const parsed = JSON.parse(normalized);
+
+        if (!parsed?.root || !Array.isArray(parsed.root.children)) {
+          throw new Error("Invalid Lexical JSON");
+        }
+
+        if (parsed.root.children.length === 0) {
+          setHtml("");
+          setLoading(false);
+          return;
+        }
+
+        const editorState = editor.parseEditorState(parsed);
+        editor.setEditorState(editorState);
+
+        let generatedHtml = "";
+        editor.read(() => {
+          generatedHtml = $generateHtmlFromNodes(editor);
+        });
+
+        if (!cancelled) {
+          lexicalCache.set(normalized, generatedHtml);
+          setHtml(generatedHtml || "");
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error("Lexical error:", err);
+        if (!cancelled) {
+          setError(true);
+          setLoading(false);
+        }
+      }
+    };
+
+    renderLexical();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [content]);
+
+  if (loading) return <p>Loading content...</p>;
+
+  if (error) return <p className="text-gray-500">Content unavailable</p>;
+
+  return <div dangerouslySetInnerHTML={{ __html: html }} />;
 };
 
 export default ArticleView;

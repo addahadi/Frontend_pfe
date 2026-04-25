@@ -21,7 +21,45 @@ export const fmtDate = (iso) =>
 
 //estimate time function
 export const estimateReadTime = (content) => {
-  const text = content.replace(/<[^>]*>/g, " ");
-  const wordCount = text.split(/\s+/).filter(Boolean).length;
-  return Math.max(1, Math.ceil(wordCount / 200));
+  let text = "";
+
+  try {
+    if (!content) return 1;
+
+    // ✅ إذا string
+    if (typeof content === "string") {
+      try {
+        const parsed = JSON.parse(content);
+        content = parsed;
+      } catch {
+        text = content;
+      }
+    }
+
+    // ✅ إذا Lexical JSON
+    if (typeof content === "object" && content?.root) {
+      const extractText = (node) => {
+        if (!node) return "";
+        if (node.text) return node.text;
+        if (node.children) {
+          return node.children.map(extractText).join(" ");
+        }
+        return "";
+      };
+
+      text = extractText(content.root);
+    }
+
+    // fallback
+    if (!text && typeof content === "string") {
+      text = content;
+    }
+
+    const words = text.trim().split(/\s+/).filter(Boolean).length;
+
+    return Math.max(1, Math.ceil(words / 200));
+  } catch (err) {
+    console.error("ReadTime error:", err);
+    return 1;
+  }
 };

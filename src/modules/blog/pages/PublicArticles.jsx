@@ -1,35 +1,60 @@
 import React, { useState, useMemo, useEffect } from "react";
 import {
-  getLikesCount,
   getTagName,
-  getPublishedArticles,
-  getTags, 
-} from "../services/blog.service"; 
+  fetchArticles,
+  fetchTags,
+} from "../services/blog.service";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const ARTICLES_PER_PAGE = 9;
 
 // ── Component ─────────────────────────────────────────────────────────────────
-const PublicArticles = () => { 
-  const published = getPublishedArticles(); 
+const PublicArticles = () => {
+  const [articles, setArticles] = useState([]);
+  const [tags, setTags] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const [search, setSearch] = useState("");
   const [activeTag, setActiveTag] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
 
-  const tags = useMemo(() => getTags(), []);
+  // Fetch articles + tags from backend
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const [artsRes, tagsRes] = await Promise.all([
+          fetchArticles({ limit: 999 }),
+          fetchTags(),
+        ]);
+        if (!cancelled) {
+          setArticles(artsRes.data);
+          setTags(tagsRes);
+        }
+      } catch (err) {
+        console.error("Failed to load articles:", err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return published.filter((a) => {
+    return articles.filter((a) => {
       const matchSearch =
         !q ||
-        a.title.toLowerCase().includes(q) ||
-        a.excerpt.toLowerCase().includes(q);
+        a.title?.toLowerCase().includes(q) ||
+        a.excerpt?.toLowerCase().includes(q);
       const matchTag = !activeTag || a.tags.includes(activeTag);
       return matchSearch && matchTag;
     });
-  }, [published, search, activeTag]);
+  }, [articles, search, activeTag]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ARTICLES_PER_PAGE));
   const safePage = Math.min(currentPage, totalPages);
@@ -38,8 +63,7 @@ const PublicArticles = () => {
     safePage * ARTICLES_PER_PAGE
   );
 
-  useEffect(() => { 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
     setCurrentPage(1);
   }, [search, activeTag]);
 
@@ -61,7 +85,7 @@ const PublicArticles = () => {
       year: "numeric",
     });
 
-  const hasNoPublishedArticles = published.length === 0;
+  const hasNoPublishedArticles = !loading && articles.length === 0;
 
   return (
     <div className="min-h-screen bg-gray-50 py-6 px-4 sm:px-6 lg:px-8">
@@ -90,7 +114,11 @@ const PublicArticles = () => {
         <div className="flex flex-col lg:flex-row gap-6">
           {/* Article Grid */}
           <div className="flex-1 min-w-0 order-2 lg:order-1">
-            {hasNoPublishedArticles ? (
+            {loading ? (
+              <div className="flex items-center justify-center py-20 animate-fade-in-up">
+                <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+              </div>
+            ) : hasNoPublishedArticles ? (
               <div className="flex flex-col items-center justify-center py-20 text-gray-400 bg-white rounded-xl border border-gray-100 border-dashed animate-fade-in-up">
                 <svg className="w-16 h-16 mb-4 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
@@ -142,7 +170,7 @@ const PublicArticles = () => {
                           <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
                             <path d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" />
                           </svg>
-                          {getLikesCount(article.article_id)}
+                          {article.likesCount}
                         </span>
                       </div>
 

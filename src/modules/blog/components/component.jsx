@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback,useMemo } from "react";
 
 // router (ناقص عندك)
 import { Link } from "react-router-dom"; 
@@ -27,7 +27,12 @@ import {
 } from "lucide-react";
 
 // services
-import { getTagName, getTags , getRelatedArticles, getRecentArticles } from "../services/blog.service";
+import {
+  getTagName,
+  fetchTags,
+  fetchRelatedArticles,
+  fetchArticles,
+} from "../services/blog.service.js";
 
 // utils
 import { estimateReadTime, fmtDate } from "../utils/blog.utils"; 
@@ -213,11 +218,7 @@ export const Hero = ({ article, likesCount, isLiked, isSaved, onLike, onSave }) 
         <span className="inline-flex w-fit items-center px-3 py-1 rounded-full bg-blue-600 text-white text-xs font-semibold uppercase tracking-wider">
           {article.type}
         </span>
-        {article.tags.length > 1 && (
-          <span className="inline-flex w-fit items-center px-2 py-1 rounded-full bg-white/20 text-white text-xs backdrop-blur-sm">
-            +{article.tags.length - 1}
-          </span>
-        )}
+
       </div>
 
       <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold text-white max-w-3xl leading-tight mb-4">
@@ -291,29 +292,6 @@ export const Hero = ({ article, likesCount, isLiked, isSaved, onLike, onSave }) 
 
 
 
-export const PopularTags = () => {
-  const allTags = getTags().sort((a, b) => b.count - a.count).slice(0, 8);
-  return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-        <span className="w-1 h-4 bg-blue-500 rounded-full"></span>
-        Popular Topics
-      </h3>
-      <div className="flex flex-wrap gap-2">
-        {allTags.map((tag) => (
-          <Link
-            key={tag.id}
-            to={`/articles?tag=${tag.id}`}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all hover:shadow-sm  bg-gray-100 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200`}
-          >
-            {tag.name}
-            <span className="ml-1.5 opacity-60">({tag.count})</span>
-          </Link>
-        ))}
-      </div>
-    </div>
-  );
-};
 
 export const ShareSection = ({ title }) => {
   const shareUrl = typeof window !== "undefined" ? window.location.href : "";
@@ -361,32 +339,47 @@ export const RelatedArticles = ({ currentArticle }) => {
 
   useEffect(() => {
     if (!currentArticle) return;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    setLoading(true);
-    
-    const timer = setTimeout(() => {
-      // Get articles matching by tags
-      const articles = getRelatedArticles(
-        currentArticle.article_id,
-        currentArticle.tags || [],
-        3
-      );
-      
-      // If no matches, use recent articles as fallback
-      if (articles.length === 0) {
-        const fallback = getRecentArticles(currentArticle.article_id, 3);
-        setRelated(fallback);
-        setIsFallback(true);
-      } else {
-        setRelated(articles);
-        setIsFallback(false);
+    let cancelled = false;
+
+    const load = async () => {
+      setLoading(true);
+      try {
+        const res = await fetchRelatedArticles(currentArticle.article_id, 3);
+        if (cancelled) return;
+
+        if (res.data.length === 0) {
+          const recent = await fetchArticles({ limit: 4, page: 1 });
+          const fallback = recent.data
+            .filter((a) => a.article_id !== currentArticle.article_id)
+            .slice(0, 3)
+            .map((a) => ({
+              ...a,
+              readingTime: Math.max(
+                1,
+                Math.round(JSON.stringify(a.content || {}).length / 1000)
+              ),
+              relevanceScore: 0,
+              sharedTagsCount: 0,
+              sharedTags: [],
+            }));
+          setRelated(fallback);
+          setIsFallback(true);
+        } else {
+          setRelated(res.data);
+          setIsFallback(false);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      
-      setLoading(false);
-    }, 150);
-    
-    return () => clearTimeout(timer);
-  }, [currentArticle?.article_id, JSON.stringify(currentArticle?.tags)]);
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentArticle?.article_id]);
 
   if (loading) {
     return (
@@ -558,3 +551,48 @@ export const SearchIcon = () => (
   </svg>
 ); 
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// PopularTags Component
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const PopularTags = () => {
+  const [allTags, setAllTags] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchTags()
+      .then((tags) => {
+        if (!cancelled) setAllTags(tags);
+      })
+      .catch(console.error);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const sortedTags = useMemo(
+    () => [...allTags].sort((a, b) => b.count - a.count).slice(0, 8),
+    [allTags]
+  );
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+        <span className="w-1 h-4 bg-blue-500 rounded-full"></span>
+        Popular Topics
+      </h3>
+      <div className="flex flex-wrap gap-2">
+        {sortedTags.map((tag) => (
+          <Link
+            key={tag.id}
+            to={`/articles?tag=${tag.id}`}
+            className="px-3 py-1.5 rounded-full text-xs font-medium border transition-all hover:shadow-sm bg-gray-100 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200"
+          >
+            {tag.name}
+            <span className="ml-1.5 opacity-60">({tag.count})</span>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+};

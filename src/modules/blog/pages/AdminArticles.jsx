@@ -4,6 +4,7 @@ import {
   deleteArticleApi,
   updateArticleApi,
   fetchArticleById,
+  fetchArticleTypes,
 } from "../services/blog.service";
 import {
   HeartIcon,
@@ -69,7 +70,7 @@ const ConfirmDialog = ({ article, onConfirm, onCancel }) => {
               </div>
               <div className="text-center">
                 <p className="text-sm font-semibold text-gray-800">Deleting article…</p>
-                <p className="text-xs text-gray-400 mt-1 truncate max-w-[200px]">{article?.title}</p>
+                <p className="text-xs text-gray-400 mt-1 truncate max-w-[200px]">{article?.title_en || article?.title}</p>
               </div>
             </div>
           ) : (
@@ -82,7 +83,7 @@ const ConfirmDialog = ({ article, onConfirm, onCancel }) => {
                   <h3 className="text-sm font-bold text-gray-900">Delete Article</h3>
                   <p className="text-xs text-gray-500 mt-1">
                     Are you sure you want to delete{" "}
-                    <span className="font-semibold text-gray-700">"{article?.title}"</span>?
+                    <span className="font-semibold text-gray-700">"{article?.title_en || article?.title}"</span>?
                     This action cannot be undone.
                   </p>
                 </div>
@@ -135,44 +136,36 @@ const AdminArticles = () => {
   const [forceEditorValidation, setForceEditorValidation] = useState(false);
   const [togglingIds, setTogglingIds]   = useState(new Set());
 
+  // ── Article types from DB (for the filter dropdown) ──────────────────────
+  const [articleTypes, setArticleTypes] = useState([]);
+
+  useEffect(() => {
+    fetchArticleTypes()
+      .then(setArticleTypes)
+      .catch((err) => console.error("Failed to load article types:", err));
+  }, []);
+
   // ── Load articles ─────────────────────────────────────────────────────────
- const loadArticles = useCallback(async () => {
-  setIsLoading(true);
-  setError(null);
-  try {
-    const res = await fetchAdminArticles("ALL");
-    
-    // ✅ الطريقة البسيطة: نحسب النوع محلياً بناءً على UUID
-    const processedArticles = res.data.map(article => {
-      let typeName = "BLOG"; // default
-      
-      if (article.article_type_id === "22222222-2222-2222-2222-222222222222") {
-        typeName = "ACTUALITE";
-      } else if (article.article_type_id === "11111111-1111-1111-1111-111111111111") {
-        typeName = "BLOG";
-      }
-      
-      return {
-        ...article,
-        type_name_en: typeName,
-        type: typeName
-      };
-    });
-    
-    setArticles(processedArticles);
-  } catch (err) {
-    setError(err.message || "Failed to load articles");
-  } finally {
-    setIsLoading(false);
-  }
-}, []);
+  const loadArticles = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetchAdminArticles("ALL");
+      setArticles(res.data);
+    } catch (err) {
+      setError(err.message || "Failed to load articles");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => { loadArticles(); }, [loadArticles]);
 
   // ── Filter ────────────────────────────────────────────────────────────────
   const filtered = articles.filter((a) => {
-    const matchSearch = (a.title || a.title_en || "").toLowerCase().includes(search.toLowerCase());
-    const matchType   = typeFilter === "All" || (a.type || a.type_name_en || "") === typeFilter;
+    const matchSearch = (a.title_en || a.title || "").toLowerCase().includes(search.toLowerCase());
+    // Compare against type_name_en from DB — no hardcoded UUIDs
+    const matchType = typeFilter === "All" || (a.type_name_en || a.type || "") === typeFilter;
     const matchStatus = statusFilter === "All" || a.status === statusFilter;
     return matchSearch && matchType && matchStatus;
   });
@@ -185,23 +178,12 @@ const AdminArticles = () => {
     await loadArticles();
   };
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // isArticleReadyForPublish — checks only fields available in the LIST query
-  //
-  // ⚠️  The list API (/admin/articles) does NOT return content_en/content_ar
-  //     (too heavy). So we only check: title, excerpt, cover_img.
-  //     Content is checked when the full article is fetched (in handleToggleStatus).
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── Publish readiness check ───────────────────────────────────────────────
   const isArticleReadyForPublish = (article) => {
     const titleEn = article.title_en || article.title || "";
-    const titleAr = article.title_ar || "";
-    const hasTitleEn = typeof titleEn === "string" && titleEn.trim().length >= 3;
-    // For the list view, if title_ar is empty we are lenient (single-language editor)
-    const hasTitleAr = typeof titleAr === "string" && titleAr.trim().length >= 3;
-
+    const hasTitleEn = titleEn.trim().length >= 3;
     const excerptEn = article.excerpt_en || article.excerpt || "";
     const hasExcerptEn = String(excerptEn).trim().length > 0;
-
     const hasCoverImage =
       typeof article.cover_img === "string" &&
       article.cover_img.trim() !== "" &&
@@ -211,11 +193,9 @@ const AdminArticles = () => {
     if (!hasTitleEn) missing.push("Title (min 3 chars)");
     if (!hasExcerptEn) missing.push("Excerpt");
     if (!hasCoverImage) missing.push("Cover image");
-    // NOTE: content is checked server-side on publish, not here
 
     return {
       hasTitleEn,
-      hasTitleAr,
       hasExcerptEn,
       hasCoverImage,
       isIncomplete: missing.length > 0,
@@ -223,10 +203,9 @@ const AdminArticles = () => {
     };
   };
 
-  // ── Toggle status (publish / archive) ─────────────────────────────────────
+  // ── Toggle status ─────────────────────────────────────────────────────────
   const handleToggleStatus = async (article) => {
     if (article.status === "PUBLISHED") {
-      // Archive → move back to DRAFT
       setTogglingIds((prev) => new Set(prev).add(article.article_id));
       try {
         await updateArticleApi(article.article_id, { status: "DRAFT" });
@@ -238,16 +217,11 @@ const AdminArticles = () => {
       } catch (err) {
         setError(err.message || "Failed to archive article");
       } finally {
-        setTogglingIds((prev) => {
-          const s = new Set(prev);
-          s.delete(article.article_id);
-          return s;
-        });
+        setTogglingIds((prev) => { const s = new Set(prev); s.delete(article.article_id); return s; });
       }
       return;
     }
 
-    // Publish: quick check from list data first
     const checks = isArticleReadyForPublish(article);
     if (checks.isIncomplete) {
       setForceEditorValidation(true);
@@ -255,7 +229,6 @@ const AdminArticles = () => {
       return;
     }
 
-    // Attempt publish (server will validate content too)
     setTogglingIds((prev) => new Set(prev).add(article.article_id));
     try {
       await updateArticleApi(article.article_id, { status: "PUBLISHED" });
@@ -265,21 +238,15 @@ const AdminArticles = () => {
         )
       );
     } catch (err) {
-      // If server rejects (e.g. missing content), open editor
       setError(null);
       const fullArticle = await fetchArticleById(article.article_id).catch(() => article);
       setForceEditorValidation(true);
       setEditingArticle(fullArticle);
     } finally {
-      setTogglingIds((prev) => {
-        const s = new Set(prev);
-        s.delete(article.article_id);
-        return s;
-      });
+      setTogglingIds((prev) => { const s = new Set(prev); s.delete(article.article_id); return s; });
     }
   };
 
-  // ── Open editor to complete an incomplete draft ───────────────────────────
   const handleCompleteFromList = async (article) => {
     setIsLoading(true);
     try {
@@ -293,7 +260,6 @@ const AdminArticles = () => {
     }
   };
 
-  // ── Edit ─────────────────────────────────────────────────────────────────
   const handleEdit = async (article) => {
     setForceEditorValidation(false);
     setIsLoading(true);
@@ -355,23 +321,29 @@ const AdminArticles = () => {
             className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 outline-none focus:border-gray-400 focus:bg-white transition-colors"
           />
         </div>
+
+        {/* Type filter — dynamic from DB */}
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value)}
           className="px-2 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white outline-none cursor-pointer focus:border-gray-400 transition-colors"
         >
-          <option>All</option>
-          <option>BLOG</option>
-          <option>ACTUALITE</option>
+          <option value="All">All Types</option>
+          {articleTypes.map((t) => (
+            <option key={t.article_type_id || t.id} value={t.name_en}>
+              {t.name_en}
+            </option>
+          ))}
         </select>
+
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
           className="px-2 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white outline-none cursor-pointer focus:border-gray-400 transition-colors"
         >
-          <option>All</option>
-          <option>PUBLISHED</option>
-          <option>DRAFT</option>
+          <option value="All">All Statuses</option>
+          <option value="PUBLISHED">PUBLISHED</option>
+          <option value="DRAFT">DRAFT</option>
         </select>
       </div>
 
@@ -407,10 +379,10 @@ const AdminArticles = () => {
               {filtered.map((article, idx) => {
                 const checks     = isArticleReadyForPublish(article);
                 const isToggling = togglingIds.has(article.article_id);
-                // Display title prefers English
-                const displayTitle = article.title_en || article.title || "Untitled";
+                const displayTitle   = article.title_en || article.title || "Untitled";
                 const displayExcerpt = article.excerpt_en || article.excerpt || "";
-                const displayType = article.type || article.type_name_en || "";
+                // type_name_en comes directly from DB via LEFT JOIN — no hardcoding
+                const displayType    = article.type_name_en || article.type || null;
 
                 return (
                   <tr
@@ -438,19 +410,26 @@ const AdminArticles = () => {
                     </td>
 
                     <td className="px-4 py-4">
-                      <TypeBadge type={article.type_name_en} />
+                      {displayType ? (
+                        <TypeBadge type={displayType} />
+                      ) : (
+                        <span className="text-xs text-gray-300 italic">—</span>
+                      )}
                     </td>
+
                     <td className="px-4 py-4">
                       <StatusBadge status={article.status} />
                     </td>
 
                     <td className="px-4 py-4">
                       <div className="flex flex-col gap-1">
-                        {(article.tagObjects || []).slice(0, 2).map((tag) => (
-                          <span key={tag.tag_id || tag.id} className="inline-block px-2 py-0.5 rounded-full text-xs text-gray-500 bg-gray-100 truncate">
-                            {tag.name_en || tag.name}
-                          </span>
-                        ))}
+                        {(article.tagObjects || article.tags?.filter((t) => typeof t === "object") || [])
+                          .slice(0, 2)
+                          .map((tag) => (
+                            <span key={tag.tag_id || tag.id} className="inline-block px-2 py-0.5 rounded-full text-xs text-gray-500 bg-gray-100 truncate">
+                              {tag.name_en || tag.name}
+                            </span>
+                          ))}
                         {(article.tagObjects || []).length > 2 && (
                           <span className="text-xs text-gray-400">+{article.tagObjects.length - 2} more</span>
                         )}
@@ -472,7 +451,6 @@ const AdminArticles = () => {
                     {/* Actions */}
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-2">
-
                         <button
                           onClick={() => handleEdit(article)}
                           className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-colors cursor-pointer whitespace-nowrap"
@@ -485,7 +463,6 @@ const AdminArticles = () => {
                             <Loader2 size={11} className="animate-spin" />
                             Please wait…
                           </span>
-
                         ) : article.status === "PUBLISHED" ? (
                           <button
                             onClick={() => handleToggleStatus(article)}
@@ -493,7 +470,6 @@ const AdminArticles = () => {
                           >
                             <ArchiveIcon /> Archive
                           </button>
-
                         ) : checks.isIncomplete ? (
                           <button
                             onClick={() => handleCompleteFromList(article)}
@@ -502,7 +478,6 @@ const AdminArticles = () => {
                           >
                             <PublishIcon /> Complete
                           </button>
-
                         ) : (
                           <button
                             onClick={() => handleToggleStatus(article)}
@@ -519,7 +494,6 @@ const AdminArticles = () => {
                         >
                           <TrashIcon />
                         </button>
-
                       </div>
                     </td>
                   </tr>

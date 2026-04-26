@@ -2,54 +2,47 @@
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
-const getToken = () => localStorage.getItem("token");
+const getToken = () => {
+  try {
+    return localStorage.getItem("token");
+  } catch {
+    return null;
+  }
+};
 
 // ── Custom API Error ──────────────────────────────────────────────────────────
 class ApiError extends Error {
   constructor(message, status) {
     super(message);
     this.status = status;
+    this.name = "ApiError";
   }
 }
 
 /**
- * publicFetch — no auth, works with CORS wildcard (*)
- * Used for: articles, tags, public reads
+ * publicFetch — no auth, used for public article reads
  */
 const publicFetch = async (endpoint, options = {}) => {
   const url = `${API_BASE}${endpoint}`;
+  const headers = { "Content-Type": "application/json", ...options.headers };
 
-  const headers = {
-    "Content-Type": "application/json",
-    ...options.headers,
-  };
+  const res = await fetch(url, { ...options, headers });
 
+  let data = {};
   try {
-    const res = await fetch(url, { ...options, headers });
-
-    let data = {};
-    try {
-      data = await res.json();
-    } catch {
-      /* non-JSON */
-    }
-
-    if (!res.ok) {
-      throw new ApiError(data?.error?.message || `Request failed: ${res.status}`, res.status);
-    }
-
-    return data;
-  } catch (err) {
-    if (err.name === "TypeError" && err.message.includes("fetch")) {
-      throw new Error("Network error: Unable to connect to server");
-    }
-    throw err;
+    data = await res.json();
+  } catch {
+    /* non-JSON */
   }
+
+  if (!res.ok) {
+    throw new ApiError(data?.error?.message || `Request failed: ${res.status}`, res.status);
+  }
+  return data;
 };
 
 /**
- * apiFetch — with Bearer token
- * Used for: all /admin/* endpoints
+ * apiFetch — with Bearer token, used for admin endpoints
  */
 const apiFetch = async (endpoint, options = {}) => {
   const url = `${API_BASE}${endpoint}`;
@@ -61,38 +54,32 @@ const apiFetch = async (endpoint, options = {}) => {
     ...options.headers,
   };
 
+  const res = await fetch(url, { ...options, headers });
+
+  let data = {};
   try {
-    const res = await fetch(url, { ...options, headers });
-
-    let data = {};
-    try {
-      data = await res.json();
-    } catch {
-      /* non-JSON */
-    }
-
-    if (!res.ok) {
-      if (res.status === 401) {
-        localStorage.removeItem("token");
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(
-            new CustomEvent("auth:unauthorized", {
-              detail: { message: data?.error?.message || "Unauthorized" },
-            }),
-          );
-        }
-        throw new Error(data?.error?.message || "Unauthorized - Please login again");
-      }
-      throw new ApiError(data?.error?.message || `Request failed: ${res.status}`, res.status);
-    }
-
-    return data;
-  } catch (err) {
-    if (err.name === "TypeError" && err.message.includes("fetch")) {
-      throw new Error("Network error: Unable to connect to server");
-    }
-    throw err;
+    data = await res.json();
+  } catch {
+    /* non-JSON */
   }
+
+  if (!res.ok) {
+    if (res.status === 401) {
+      try {
+        localStorage.removeItem("token");
+      } catch {}
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("auth:unauthorized", {
+            detail: { message: data?.error?.message || "Unauthorized" },
+          }),
+        );
+      }
+      throw new ApiError(data?.error?.message || "Unauthorized - Please login again", 401);
+    }
+    throw new ApiError(data?.error?.message || `Request failed: ${res.status}`, res.status);
+  }
+  return data;
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -114,24 +101,19 @@ const mapTag = (t) => ({
 /**
  * mapArticle — normalises a raw article from the API.
  *
- * Key fields exposed:
- *   title        — display title (en)
- *   title_en     — kept raw for the editor
- *   excerpt      — display excerpt (en)
- *   excerpt_en   — kept raw for the editor
- *   type         — type name string e.g. "BLOG" (from type_name_en)
- *   type_name_en — same as above, redundant alias for clarity
- *   tagObjects   — full tag objects [{tag_id, name_en, name_ar}]
- *   tags         — array of tag_id UUIDs (for filtering)
+ * type / type_name_en always comes from the DB JOIN (name_en column from article_types).
+ * Never hardcodes UUIDs or fake type IDs.
  */
 const mapArticle = (article, lang = "en") => {
+  if (!article) return null;
   const isAr = lang === "ar";
 
-  // Resolve the human-readable type name from whichever field the backend sent
+  // type_name_en comes from the server's LEFT JOIN on article_types.
+  // The field may be called type_name_en (list) or type (single fetch).
   const typeName =
-    article.type_name_en || // getArticles list query
+    article.type_name_en ||
     (typeof article.type === "string" && !/^[0-9a-f-]{36}$/i.test(article.type)
-      ? article.type // getArticleById now returns type_name_en as `type`
+      ? article.type
       : null) ||
     null;
 
@@ -139,7 +121,6 @@ const mapArticle = (article, lang = "en") => {
     ...article,
     article_id: article.article_id || article.id,
 
-    // Bilingual display fields
     title: isAr
       ? article.title_ar || article.title_en || article.title
       : article.title_en || article.title,
@@ -158,13 +139,21 @@ const mapArticle = (article, lang = "en") => {
     content_en: article.content_en || article.content || null,
     content_ar: article.content_ar || null,
 
-    // Type — always the human-readable name string (never a UUID)
+    // Type: always the human-readable name from DB (e.g. "BLOG", "ACTUALITE")
     type: typeName,
     type_name_en: typeName,
+    type_name_ar: article.type_name_ar || null,
+
+    // article_type_id: the real UUID from DB
+    article_type_id: article.article_type_id || null,
 
     // Tags
-    tags: article.tags?.map((t) => t.tag_id || t.id || t) || [],
-    tagObjects: article.tags || [],
+    tags: Array.isArray(article.tags)
+      ? article.tags.map((t) => (typeof t === "object" ? t.tag_id || t.id || t : t))
+      : [],
+    tagObjects: Array.isArray(article.tags)
+      ? article.tags.filter((t) => typeof t === "object")
+      : [],
 
     // Counts
     likesCount: Number(article.likesCount ?? article.likes_count ?? 0),
@@ -177,19 +166,25 @@ const mapArticle = (article, lang = "en") => {
     cover_img: article.cover_img,
     slug: article.slug,
     status: article.status,
-    article_type_id: article.article_type_id,
   };
 };
 
 // ─── Public APIs (no auth) ────────────────────────────────────────────────────
 
 export const fetchArticles = async (params = {}) => {
-  const query = new URLSearchParams({ status: "PUBLISHED", ...params }).toString();
+  // Always request server-side pagination — never fetch 999 at once
+  const { limit = 9, page = 1, ...rest } = params;
+  const query = new URLSearchParams({
+    status: "PUBLISHED",
+    limit: String(limit),
+    page: String(page),
+    ...rest,
+  }).toString();
   const res = await publicFetch(`/articles?${query}`);
   const articlesData = extractData(res);
   const pagination = extractPagination(res) || {
-    page: 1,
-    limit: 9,
+    page: Number(page),
+    limit: Number(limit),
     total: articlesData.length,
     totalPages: 1,
   };
@@ -198,12 +193,15 @@ export const fetchArticles = async (params = {}) => {
 };
 
 export const fetchArticleBySlug = async (slug) => {
+  // Basic slug validation to prevent path traversal
+  if (!/^[a-z0-9-]+$/.test(slug)) throw new ApiError("Invalid article slug", 400);
   const res = await publicFetch(`/articles/slug/${slug}`);
   const articleData = extractItem(res);
   return articleData ? mapArticle(articleData) : null;
 };
 
 export const fetchArticleById = async (id) => {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) throw new ApiError("Invalid article ID", 400);
   const res = await publicFetch(`/articles/${id}`);
   const articleData = extractItem(res);
   return articleData ? mapArticle(articleData) : null;
@@ -217,6 +215,8 @@ export const fetchTags = async () => {
 };
 
 export const fetchRelatedArticles = async (articleId, limit = 3) => {
+  if (!/^[0-9a-f-]{36}$/i.test(articleId))
+    return { data: [], meta: { is_fallback: true, total_matches: 0 } };
   const res = await publicFetch(`/articles/${articleId}/related?limit=${limit}`);
   const articlesData = extractData(res);
   const meta = res.data?.meta || res.meta || { is_fallback: false, total_matches: 0 };
@@ -233,16 +233,14 @@ export const fetchRelatedArticles = async (articleId, limit = 3) => {
 };
 
 export const toggleLike = async (articleId) => {
-  const res = await apiFetch(`/articles/${articleId}/likes`, {
-    method: "POST",
-  });
+  if (!/^[0-9a-f-]{36}$/i.test(articleId)) throw new ApiError("Invalid article ID", 400);
+  const res = await apiFetch(`/articles/${articleId}/likes`, { method: "POST" });
   return extractItem(res) || res.data;
 };
 
 export const toggleSave = async (articleId) => {
-  const res = await apiFetch(`/articles/${articleId}/saves`, {
-    method: "POST",
-  });
+  if (!/^[0-9a-f-]{36}$/i.test(articleId)) throw new ApiError("Invalid article ID", 400);
+  const res = await apiFetch(`/articles/${articleId}/saves`, { method: "POST" });
   return extractItem(res) || res.data;
 };
 
@@ -302,12 +300,17 @@ export const isLexicalJson = (content) => {
 
 // ─── Admin APIs (require auth) ────────────────────────────────────────────────
 
-export const fetchAdminArticles = async (status = "ALL") => {
-  const res = await apiFetch(`/admin/articles?status=${encodeURIComponent(status)}`);
+export const fetchAdminArticles = async (status = "ALL", params = {}) => {
+  const query = new URLSearchParams({
+    status: encodeURIComponent(status),
+    limit: "20",
+    ...params,
+  }).toString();
+  const res = await apiFetch(`/admin/articles?${query}`);
   const articlesData = extractData(res);
   const pagination = extractPagination(res) || {
     page: 1,
-    limit: 9,
+    limit: 100,
     total: articlesData.length,
     totalPages: 1,
   };
@@ -316,28 +319,31 @@ export const fetchAdminArticles = async (status = "ALL") => {
 };
 
 export const createArticleApi = async (payload) => {
+  // Ensure article_type_id is included and is a valid UUID
+  const body = {
+    title_en: payload.title_en || payload.title,
+    title_ar: payload.title_ar || payload.title,
+    excerpt_en: payload.excerpt_en || payload.excerpt,
+    excerpt_ar: payload.excerpt_ar || payload.excerpt,
+    content_en: payload.content_en || payload.content,
+    content_ar: payload.content_ar || payload.content,
+    cover_img: payload.cover_img,
+    status: payload.status,
+    tags: payload.tags,
+  };
+
+  body.article_type_id = payload.article_type_id;
+
   const res = await apiFetch("/articles", {
     method: "POST",
-    body: JSON.stringify({
-      title_en: payload.title_en || payload.title,
-      title_ar: payload.title_ar || payload.title,
-      excerpt_en: payload.excerpt_en || payload.excerpt,
-      excerpt_ar: payload.excerpt_ar || payload.excerpt,
-      content_en: payload.content_en || payload.content,
-      content_ar: payload.content_ar || payload.content,
-      cover_img: payload.cover_img,
-      status: payload.status,
-      // Send both so backend picks whichever is available
-      ...(payload.article_type_id && { article_type_id: payload.article_type_id }),
-      article_type_id: payload.article_type_id,
-      ...(payload.tags && { tags: payload.tags }),
-    }),
+    body: JSON.stringify(body),
   });
-
   return extractItem(res) || res.data;
 };
 
 export const updateArticleApi = async (id, payload) => {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) throw new ApiError("Invalid article ID", 400);
+
   const allowedFields = [
     "title_en",
     "title_ar",
@@ -349,26 +355,31 @@ export const updateArticleApi = async (id, payload) => {
     "cover_img",
     "article_type_id",
     "tags",
-    "type",
   ];
 
   const body = Object.fromEntries(
     Object.entries(payload).filter(([key]) => allowedFields.includes(key)),
   );
 
+  // Only send article_type_id if it's a valid UUID
+  if (body.article_type_id && !/^[0-9a-f-]{36}$/i.test(body.article_type_id)) {
+    delete body.article_type_id;
+  }
+
   const res = await apiFetch(`/articles/${id}`, {
     method: "PUT",
     body: JSON.stringify(body),
   });
-
   return extractItem(res) || res.data;
 };
 
 export const deleteArticleApi = async (id) => {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) throw new ApiError("Invalid article ID", 400);
   await apiFetch(`/articles/${id}`, { method: "DELETE" });
 };
 
 export const saveDraftApi = async (id, payload) => {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) throw new ApiError("Invalid article ID", 400);
   const res = await apiFetch(`/articles/${id}/draft`, {
     method: "PATCH",
     body: JSON.stringify({
@@ -400,26 +411,36 @@ export const uploadCoverApi = async (file) => {
     body: formData,
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data?.error?.message || "Upload failed");
+  if (!res.ok) throw new ApiError(data?.error?.message || "Upload failed", res.status);
   return extractItem(data) || data.data;
 };
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 export const adminLogin = async (credentials) => {
+  // Sanitize inputs before sending
+  const safeCredentials = {
+    email: String(credentials.email || "")
+      .trim()
+      .toLowerCase(),
+    password: String(credentials.password || ""),
+  };
+
   const url = `${API_BASE}/admin/login`;
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(credentials),
+    body: JSON.stringify(safeCredentials),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data?.error?.message || "Login failed");
+  if (!res.ok) throw new ApiError(data?.error?.message || "Login failed", res.status);
   return data;
 };
 
 export const adminLogout = () => {
-  localStorage.removeItem("token");
+  try {
+    localStorage.removeItem("token");
+  } catch {}
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event("auth:logout"));
   }
@@ -430,14 +451,25 @@ export const adminLogout = () => {
 export const createTagApi = (name_en, name_ar) =>
   apiFetch("/tags", {
     method: "POST",
-    body: JSON.stringify({ name_en, name_ar }),
+    body: JSON.stringify({ name_en: String(name_en).trim(), name_ar: String(name_ar).trim() }),
   });
 
 export const deleteTagApi = async (id) => {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) throw new ApiError("Invalid tag ID", 400);
   await apiFetch(`/tags/${id}`, { method: "DELETE" });
 };
 
 export const fetchArticleTypes = async () => {
   const res = await publicFetch("/article-types");
-  return extractData(res);
+  const data = extractData(res);
+  // Normalize: ensure both id and article_type_id fields exist
+  return Array.isArray(data)
+    ? data.map((t) => ({
+        ...t,
+        id: t.article_type_id || t.id,
+        article_type_id: t.article_type_id || t.id,
+        name_en: t.name_en || "",
+        name_ar: t.name_ar || "",
+      }))
+    : [];
 };

@@ -4,6 +4,7 @@ import {
   deleteArticleApi,
   updateArticleApi,
   fetchArticleById,
+  fetchArticleTypes,
 } from "../services/blog.service";
 import {
   HeartIcon,
@@ -20,7 +21,7 @@ import { StatusBadge } from "../components/component";
 import { AlertTriangle, Trash2, Loader2, CheckCircle2 } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ConfirmDialog — حوار الحذف مع أنيميشن
+// ConfirmDialog
 // ─────────────────────────────────────────────────────────────────────────────
 const ConfirmDialog = ({ article, onConfirm, onCancel }) => {
   const [isDeleting, setIsDeleting] = useState(false);
@@ -69,7 +70,7 @@ const ConfirmDialog = ({ article, onConfirm, onCancel }) => {
               </div>
               <div className="text-center">
                 <p className="text-sm font-semibold text-gray-800">Deleting article…</p>
-                <p className="text-xs text-gray-400 mt-1 truncate max-w-[200px]">{article?.title}</p>
+                <p className="text-xs text-gray-400 mt-1 truncate max-w-[200px]">{article?.title_en || article?.title}</p>
               </div>
             </div>
           ) : (
@@ -82,7 +83,7 @@ const ConfirmDialog = ({ article, onConfirm, onCancel }) => {
                   <h3 className="text-sm font-bold text-gray-900">Delete Article</h3>
                   <p className="text-xs text-gray-500 mt-1">
                     Are you sure you want to delete{" "}
-                    <span className="font-semibold text-gray-700">"{article?.title}"</span>?
+                    <span className="font-semibold text-gray-700">"{article?.title_en || article?.title}"</span>?
                     This action cannot be undone.
                   </p>
                 </div>
@@ -121,7 +122,7 @@ const ConfirmDialog = ({ article, onConfirm, onCancel }) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// المكوّن الرئيسي
+// Main Component
 // ─────────────────────────────────────────────────────────────────────────────
 const AdminArticles = () => {
   const [search, setSearch]             = useState("");
@@ -135,7 +136,16 @@ const AdminArticles = () => {
   const [forceEditorValidation, setForceEditorValidation] = useState(false);
   const [togglingIds, setTogglingIds]   = useState(new Set());
 
-  // ── تحميل المقالات ────────────────────────────────────────────────────────
+  // ── Article types from DB (for the filter dropdown) ──────────────────────
+  const [articleTypes, setArticleTypes] = useState([]);
+
+  useEffect(() => {
+    fetchArticleTypes()
+      .then(setArticleTypes)
+      .catch((err) => console.error("Failed to load article types:", err));
+  }, []);
+
+  // ── Load articles ─────────────────────────────────────────────────────────
   const loadArticles = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -151,15 +161,16 @@ const AdminArticles = () => {
 
   useEffect(() => { loadArticles(); }, [loadArticles]);
 
-  // ── فلترة ──────────────────────────────────────────────────────────────────
+  // ── Filter ────────────────────────────────────────────────────────────────
   const filtered = articles.filter((a) => {
-    const matchSearch = (a.title || "").toLowerCase().includes(search.toLowerCase());
-    const matchType   = typeFilter === "All" || a.type === typeFilter;
+    const matchSearch = (a.title_en || a.title || "").toLowerCase().includes(search.toLowerCase());
+    // Compare against type_name_en from DB — no hardcoded UUIDs
+    const matchType = typeFilter === "All" || (a.type_name_en || a.type || "") === typeFilter;
     const matchStatus = statusFilter === "All" || a.status === statusFilter;
     return matchSearch && matchType && matchStatus;
   });
 
-  // ── حذف ───────────────────────────────────────────────────────────────────
+  // ── Delete ────────────────────────────────────────────────────────────────
   const handleDeleteConfirmed = async () => {
     await deleteArticleApi(confirmTarget.article_id);
     await new Promise((r) => setTimeout(r, 900));
@@ -167,58 +178,33 @@ const AdminArticles = () => {
     await loadArticles();
   };
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // isArticleReadyForPublish — الفحص الذكي للاكتمال
-  //
-  // ⚠️  لماذا لا نفحص content هنا؟
-  //   لأن API القائمة (/admin/articles) لا يُرجع حقل content كامل
-  //   (ثقيل جداً للقائمة)، فيظهر null دائماً حتى لو المقال محفوظ.
-  //   → نفحص excerpt + cover_img فقط من بيانات القائمة.
-  //   → نفحص content الحقيقي لاحقاً داخل handleToggleStatus
-  //     عند جلب المقال الكامل بـ fetchArticleById.
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── Publish readiness check ───────────────────────────────────────────────
   const isArticleReadyForPublish = (article) => {
-    const hasTitle =
-      typeof article.title === "string" && article.title.trim().length > 0;
-
-    const excerptValue = article.excerpt ?? article.excerpt_en ?? "";
-    const hasExcerpt   = String(excerptValue).trim().length > 0;
-
+    const titleEn = article.title_en || article.title || "";
+    const hasTitleEn = titleEn.trim().length >= 3;
+    const excerptEn = article.excerpt_en || article.excerpt || "";
+    const hasExcerptEn = String(excerptEn).trim().length > 0;
     const hasCoverImage =
       typeof article.cover_img === "string" &&
       article.cover_img.trim() !== "" &&
       !article.cover_img.startsWith("blob:");
 
-    // المقال "ناقص" إذا كان ينقصه عنوان أو excerpt أو صورة
-    const isIncomplete = !hasTitle || !hasExcerpt || !hasCoverImage;
+    const missing = [];
+    if (!hasTitleEn) missing.push("Title (min 3 chars)");
+    if (!hasExcerptEn) missing.push("Excerpt");
+    if (!hasCoverImage) missing.push("Cover image");
 
-    return { hasTitle, hasExcerpt, hasCoverImage, isIncomplete };
+    return {
+      hasTitleEn,
+      hasExcerptEn,
+      hasCoverImage,
+      isIncomplete: missing.length > 0,
+      missing,
+    };
   };
 
-  // ── فحص المحتوى الحقيقي (من المقال الكامل) ───────────────────────────────
-  const checkContentFromFullArticle = (fullArticle) => {
-    const rawContent = fullArticle.content ?? fullArticle.content_en ?? null;
-    if (!rawContent) return false;
-    try {
-      const parsed =
-        typeof rawContent === "string" ? JSON.parse(rawContent) : rawContent;
-      const extractText = (node) => {
-        if (!node) return "";
-        if (typeof node.text === "string") return node.text;
-        if (Array.isArray(node.children))
-          return node.children.map(extractText).join(" ");
-        return "";
-      };
-      return extractText(parsed?.root ?? parsed).trim().length > 0;
-    } catch {
-      return typeof rawContent === "string" && rawContent.trim().length > 0;
-    }
-  };
-
-  // ── تبديل الحالة ──────────────────────────────────────────────────────────
+  // ── Toggle status ─────────────────────────────────────────────────────────
   const handleToggleStatus = async (article) => {
-
-    // أرشفة مباشرة — لا تحتاج فحصاً
     if (article.status === "PUBLISHED") {
       setTogglingIds((prev) => new Set(prev).add(article.article_id));
       try {
@@ -227,32 +213,24 @@ const AdminArticles = () => {
           prev.map((a) =>
             a.article_id === article.article_id ? { ...a, status: "DRAFT" } : a
           )
-        ); 
-        setStatusFilter("All");
+        );
       } catch (err) {
         setError(err.message || "Failed to archive article");
-        await loadArticles();
       } finally {
         setTogglingIds((prev) => { const s = new Set(prev); s.delete(article.article_id); return s; });
       }
       return;
     }
 
-    // نشر — نجلب المقال الكامل لفحص المحتوى الحقيقي
+    const checks = isArticleReadyForPublish(article);
+    if (checks.isIncomplete) {
+      setForceEditorValidation(true);
+      setEditingArticle({ ...article, _missingFields: checks.missing });
+      return;
+    }
+
     setTogglingIds((prev) => new Set(prev).add(article.article_id));
     try {
-      const fullArticle = await fetchArticleById(article.article_id);
-      const checks      = isArticleReadyForPublish(fullArticle);
-      const hasContent  = checkContentFromFullArticle(fullArticle);
-
-      if (checks.isIncomplete || !hasContent) {
-        // ناقص → افتح المحرر مع تفعيل التحقق
-        setForceEditorValidation(true);
-        setEditingArticle(fullArticle);
-        return;
-      }
-
-      // مكتمل → انشر مباشرة
       await updateArticleApi(article.article_id, { status: "PUBLISHED" });
       setArticles((prev) =>
         prev.map((a) =>
@@ -260,14 +238,15 @@ const AdminArticles = () => {
         )
       );
     } catch (err) {
-      setError(err.message || "Failed to publish article");
-      await loadArticles();
+      setError(null);
+      const fullArticle = await fetchArticleById(article.article_id).catch(() => article);
+      setForceEditorValidation(true);
+      setEditingArticle(fullArticle);
     } finally {
       setTogglingIds((prev) => { const s = new Set(prev); s.delete(article.article_id); return s; });
     }
   };
 
-  // ── فتح المحرر لإكمال مقال ناقص ──────────────────────────────────────────
   const handleCompleteFromList = async (article) => {
     setIsLoading(true);
     try {
@@ -281,7 +260,6 @@ const AdminArticles = () => {
     }
   };
 
-  // ── تعديل عادي ───────────────────────────────────────────────────────────
   const handleEdit = async (article) => {
     setForceEditorValidation(false);
     setIsLoading(true);
@@ -329,7 +307,7 @@ const AdminArticles = () => {
         </div>
       )}
 
-      {/* الفلاتر */}
+      {/* Filters */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
         <div className="relative flex-1">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
@@ -343,15 +321,29 @@ const AdminArticles = () => {
             className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 outline-none focus:border-gray-400 focus:bg-white transition-colors"
           />
         </div>
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="px-2 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white outline-none cursor-pointer focus:border-gray-400 transition-colors">
-          <option>All</option>
-          <option>BLOG</option>
-          <option>ACTUALITE</option>
+
+        {/* Type filter — dynamic from DB */}
+        <select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+          className="px-2 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white outline-none cursor-pointer focus:border-gray-400 transition-colors"
+        >
+          <option value="All">All Types</option>
+          {articleTypes.map((t) => (
+            <option key={t.article_type_id || t.id} value={t.name_en}>
+              {t.name_en}
+            </option>
+          ))}
         </select>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-2 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white outline-none cursor-pointer focus:border-gray-400 transition-colors">
-          <option>All</option>
-          <option>PUBLISHED</option>
-          <option>DRAFT</option>
+
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="px-2 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white outline-none cursor-pointer focus:border-gray-400 transition-colors"
+        >
+          <option value="All">All Statuses</option>
+          <option value="PUBLISHED">PUBLISHED</option>
+          <option value="DRAFT">DRAFT</option>
         </select>
       </div>
 
@@ -383,26 +375,26 @@ const AdminArticles = () => {
                 ))}
               </tr>
             </thead>
-            <tbody> 
-              
-              {
-                
-              filtered.map((article, idx) => {
+            <tbody>
+              {filtered.map((article, idx) => {
                 const checks     = isArticleReadyForPublish(article);
-                const isToggling = togglingIds.has(article.article_id); 
-                
+                const isToggling = togglingIds.has(article.article_id);
+                const displayTitle   = article.title_en || article.title || "Untitled";
+                const displayExcerpt = article.excerpt_en || article.excerpt || "";
+                // type_name_en comes directly from DB via LEFT JOIN — no hardcoding
+                const displayType    = article.type_name_en || article.type || null;
 
                 return (
                   <tr
                     key={article.article_id}
                     className={`hover:bg-gray-50 transition-colors ${idx < filtered.length - 1 ? "border-b border-gray-100" : ""}`}
                   >
-                    {/* العنوان */}
+                    {/* Title */}
                     <td className="px-4 py-4">
                       <div className="font-semibold text-sm text-gray-900 truncate flex items-center gap-2">
-                        {article.title}
+                        {displayTitle}
                         {article.status === "DRAFT" && checks.isIncomplete && (
-                          <span title="Missing excerpt or cover image — click Complete to fix">
+                          <span title={`Missing: ${checks.missing.join(", ")}`}>
                             <AlertTriangle className="text-yellow-500 flex-shrink-0" size={14} />
                           </span>
                         )}
@@ -413,20 +405,31 @@ const AdminArticles = () => {
                         )}
                       </div>
                       <div className="text-xs text-gray-400 truncate mt-0.5">
-                        {article.excerpt_en || article.excerpt || article.description || "No excerpt"}
+                        {displayExcerpt || "No excerpt"}
                       </div>
                     </td>
 
-                    <td className="px-4 py-4"><TypeBadge type={article.type || "BLOG"} /></td>
-                    <td className="px-4 py-4"><StatusBadge status={article.status} /></td>
+                    <td className="px-4 py-4">
+                      {displayType ? (
+                        <TypeBadge type={displayType} />
+                      ) : (
+                        <span className="text-xs text-gray-300 italic">—</span>
+                      )}
+                    </td>
+
+                    <td className="px-4 py-4">
+                      <StatusBadge status={article.status} />
+                    </td>
 
                     <td className="px-4 py-4">
                       <div className="flex flex-col gap-1">
-                        {(article.tagObjects || []).slice(0, 2).map((tag) => (
-                          <span key={tag.tag_id || tag.id} className="inline-block px-2 py-0.5 rounded-full text-xs text-gray-500 bg-gray-100 truncate">
-                            {tag.name_en || tag.name}
-                          </span>
-                        ))}
+                        {(article.tagObjects || article.tags?.filter((t) => typeof t === "object") || [])
+                          .slice(0, 2)
+                          .map((tag) => (
+                            <span key={tag.tag_id || tag.id} className="inline-block px-2 py-0.5 rounded-full text-xs text-gray-500 bg-gray-100 truncate">
+                              {tag.name_en || tag.name}
+                            </span>
+                          ))}
                         {(article.tagObjects || []).length > 2 && (
                           <span className="text-xs text-gray-400">+{article.tagObjects.length - 2} more</span>
                         )}
@@ -445,10 +448,9 @@ const AdminArticles = () => {
                       </span>
                     </td>
 
-                    {/* ── الإجراءات ── */}
+                    {/* Actions */}
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-2">
-
                         <button
                           onClick={() => handleEdit(article)}
                           className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-colors cursor-pointer whitespace-nowrap"
@@ -457,33 +459,26 @@ const AdminArticles = () => {
                         </button>
 
                         {isToggling ? (
-                          /* جاري المعالجة */
                           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-gray-400 border border-gray-200 bg-gray-50 whitespace-nowrap">
                             <Loader2 size={11} className="animate-spin" />
                             Please wait…
                           </span>
-
                         ) : article.status === "PUBLISHED" ? (
-                          /* منشور → أرشفة */
                           <button
                             onClick={() => handleToggleStatus(article)}
                             className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors whitespace-nowrap"
                           >
                             <ArchiveIcon /> Archive
                           </button>
-
                         ) : checks.isIncomplete ? (
-                          /* Draft + ناقص → Complete (يفتح المحرر) */
                           <button
                             onClick={() => handleCompleteFromList(article)}
-                            title="Missing excerpt or cover image"
+                            title={`Missing: ${checks.missing.join(", ")}`}
                             className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium text-orange-600 border border-orange-400 bg-orange-50 hover:bg-orange-100 transition-colors whitespace-nowrap"
                           >
                             <PublishIcon /> Complete
                           </button>
-
                         ) : (
-                          /* Draft + مكتمل (excerpt + cover موجودان) → Publish */
                           <button
                             onClick={() => handleToggleStatus(article)}
                             title="Publish this article"
@@ -499,7 +494,6 @@ const AdminArticles = () => {
                         >
                           <TrashIcon />
                         </button>
-
                       </div>
                     </td>
                   </tr>

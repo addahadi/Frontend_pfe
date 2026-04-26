@@ -1,13 +1,14 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect,  } from "react";
 import {
   fetchTags,
   createArticleApi,
   updateArticleApi,
   uploadCoverApi,
+  fetchArticleTypes,
 } from "../services/blog.service";
-import { Save, Globe, ImageIcon, X, Tag, ArrowLeft } from "lucide-react";
+import { Save, Globe, ImageIcon, X, Tag, ArrowLeft, AlertCircle } from "lucide-react";
 import { $getRoot } from "lexical";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
@@ -34,12 +35,6 @@ import { Toast } from "../components/component";
 import { CharacterCountDisplay } from "../components/component";
 import { TagSelector } from "../components/component";
 
-// ✅ UUIDs الحقيقية لأنواع المقالات (استبدلها بالقيم من قاعدة بياناتك)
-const TYPE_UUID_MAP = {
-  BLOG: "550e8400-e29b-41d4-a716-446655440000",
-  ACTUALITE: "660e8400-e29b-41d4-a716-446655440001",
-};
-
 const editorTheme = {
   heading: { h1: "editor-h1", h2: "editor-h2", h3: "editor-h3" },
   text: {
@@ -65,18 +60,13 @@ const editorTheme = {
 const URL_REGEX =
   /((https?:\/\/(www\.)?)|(www\.))[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_+.~#?&//=]*)/;
 const EMAIL_REGEX =
-  /(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))/;
+  /(([^<>()[\]\\.,;:\s@"]+(.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))/;
 const AUTO_LINK_MATCHERS = [
   (text) => {
     const m = URL_REGEX.exec(text);
     if (!m) return null;
     const f = m[0];
-    return {
-      index: m.index,
-      length: f.length,
-      text: f,
-      url: f.startsWith("http") ? f : `https://${f}`,
-    };
+    return { index: m.index, length: f.length, text: f, url: f.startsWith("http") ? f : `https://${f}` };
   },
   (text) => {
     const m = EMAIL_REGEX.exec(text);
@@ -93,7 +83,57 @@ const ArticleEditor = ({
 }) => {
   const isEditMode = !!articleToEdit;
 
-  // ── Tags: loaded from API ────────────────────────────────────────────────────
+  // ── Article Types loaded from DB ──────────────────────────────────────────
+  const [articleTypes, setArticleTypes] = useState([]);
+  const [typesLoading, setTypesLoading] = useState(true);
+  const [selectedTypeId, setSelectedTypeId] = useState(null); // This is ALWAYS a real DB UUID
+
+  // Load types from DB on mount
+  useEffect(() => {
+    let cancelled = false;
+    setTypesLoading(true);
+    fetchArticleTypes()
+      .then((list) => {
+        if (cancelled || !list?.length) return;
+        setArticleTypes(list);
+
+        if (isEditMode && articleToEdit?.article_type_id) {
+          // Editing: find matching type in DB list
+          const found = list.find(
+            (t) =>
+              t.article_type_id === articleToEdit.article_type_id ||
+              t.id === articleToEdit.article_type_id
+          );
+          if (found) {
+            setSelectedTypeId(found.article_type_id || found.id);
+          } else {
+            // Fall back to first type
+            setSelectedTypeId(list[0].article_type_id || list[0].id);
+          }
+        } else if (isEditMode && articleToEdit?.type_name_en) {
+          // Try matching by name
+          const found = list.find(
+            (t) =>
+              t.name_en?.toUpperCase() === articleToEdit.type_name_en?.toUpperCase() ||
+              t.name_en?.toUpperCase() === articleToEdit.type?.toUpperCase()
+          );
+          setSelectedTypeId(found?.article_type_id || found?.id || list[0].article_type_id || list[0].id);
+        } else {
+          // New article: default to first type (usually BLOG)
+          const blogType = list.find((t) => t.name_en?.toUpperCase() === "BLOG");
+          setSelectedTypeId(blogType?.article_type_id || blogType?.id || list[0].article_type_id || list[0].id);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load article types:", err);
+      })
+      .finally(() => {
+        if (!cancelled) setTypesLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [isEditMode, articleToEdit?.article_type_id]);
+
+  // ── Tags ──────────────────────────────────────────────────────────────────
   const [availableTags, setAvailableTags] = useState([]);
   const [selectedTags, setSelectedTags] = useState(() => {
     if (!isEditMode) return [];
@@ -108,51 +148,29 @@ const ArticleEditor = ({
         setAvailableTags(tags);
         if (isEditMode) {
           const rawTags = articleToEdit.tag_ids ?? articleToEdit.tags ?? [];
-          const resolved = rawTags.map(t => {
-            if (typeof t === 'string' && t.length === 36) return t;
-            if (typeof t === 'object') return t.tag_id || t.id;
-            if (typeof t === 'string') {
-              return tags.find(tag => tag.name_en === t || tag.name_ar === t)?.tag_id;
-            }
-            return t;
-          }).filter(Boolean);
+          const resolved = rawTags
+            .map((t) => {
+              if (typeof t === "string" && t.length === 36) return t;
+              if (typeof t === "object") return t.tag_id || t.id;
+              if (typeof t === "string") {
+                return tags.find((tag) => tag.name_en === t || tag.name_ar === t)?.tag_id;
+              }
+              return t;
+            })
+            .filter(Boolean);
           if (resolved.length) setSelectedTags(resolved);
         }
       })
       .catch(console.error);
   }, [isEditMode, articleToEdit]);
 
-  const [title, setTitle] = useState(isEditMode ? articleToEdit.title : "");
+  // ── Form state ────────────────────────────────────────────────────────────
+  const [title, setTitle] = useState(isEditMode ? (articleToEdit.title_en || articleToEdit.title || "") : "");
   const [excerpt, setExcerpt] = useState(
-    isEditMode ? articleToEdit.excerpt ?? articleToEdit.description ?? "" : ""
+    isEditMode ? (articleToEdit.excerpt_en ?? articleToEdit.excerpt ?? "") : ""
   );
-
-  // ✅ تحسين منطق type عند التعديل
-  const [type, setType] = useState(() => {
-    if (!isEditMode) return "BLOG";
-    
-    const t = articleToEdit.type;
-    const typeId = articleToEdit.article_type_id;
-    
-    // تحقق من UUID أولاً
-    if (typeId === TYPE_UUID_MAP.ACTUALITE) return "ACTUALITE";
-    if (typeId === TYPE_UUID_MAP.BLOG) return "BLOG";
-    
-    // ثم تحقق من النص
-    if (typeof t === "string") {
-      if (/^blog$/i.test(t)) return "BLOG";
-      if (/^(actualite|actualité|news|ACTUALITE)$/i.test(t)) return "ACTUALITE";
-    }
-    
-    return "BLOG";
-  });
-
-  const [status, setStatus] = useState(
-    isEditMode ? articleToEdit.status : "DRAFT"
-  );
-  const [coverImage, setCoverImage] = useState(
-    isEditMode ? articleToEdit.cover_img : null
-  );
+  const [status, setStatus] = useState(isEditMode ? articleToEdit.status : "DRAFT");
+  const [coverImage, setCoverImage] = useState(isEditMode ? articleToEdit.cover_img : null);
   const [coverFile, setCoverFile] = useState(null);
   const [editorState, setEditorState] = useState(null);
   const [wordCount, setWordCount] = useState(0);
@@ -160,16 +178,20 @@ const ArticleEditor = ({
   const [toast, setToast] = useState(null);
   const [errors, setErrors] = useState({});
 
-  const showToast = (message, type = "success") =>
-    setToast({ message, type });
+  const showToast = (message, type = "success") => setToast({ message, type });
 
-  // ── Validation ───────────────────────────────────────────────────────────────
+  // ── Validation ────────────────────────────────────────────────────────────
   const validateForPublish = (showMessages = true) => {
     const newErrors = {};
 
-    if (!title.trim()) newErrors.title = "Title is required for publishing";
-    if (!excerpt.trim()) newErrors.excerpt = "Excerpt is required for publishing";
-    if (!coverImage) newErrors.coverImage = "Cover image is required for publishing";
+    if (!title.trim() || title.trim().length < 3)
+      newErrors.title = "Title is required (min 3 characters)";
+    if (!excerpt.trim())
+      newErrors.excerpt = "Excerpt is required for publishing";
+    if (!coverImage)
+      newErrors.coverImage = "Cover image is required for publishing";
+    if (!selectedTypeId)
+      newErrors.type = "Please select an article type";
 
     const hasValidContent = () => {
       if (editorState) {
@@ -180,18 +202,17 @@ const ArticleEditor = ({
         });
         return hasText;
       }
-      if (articleToEdit?.content) {
-        const content = typeof articleToEdit.content === 'string' 
-          ? JSON.parse(articleToEdit.content) 
-          : articleToEdit.content;
+      if (articleToEdit?.content_en) {
+        const content =
+          typeof articleToEdit.content_en === "string"
+            ? JSON.parse(articleToEdit.content_en)
+            : articleToEdit.content_en;
         return content?.root?.children?.length > 0;
       }
       return false;
     };
 
-    if (!hasValidContent()) {
-      newErrors.content = "Content is required for publishing";
-    }
+    if (!hasValidContent()) newErrors.content = "Content is required for publishing";
 
     setErrors(newErrors);
 
@@ -214,23 +235,36 @@ const ArticleEditor = ({
     }
   }, [forceValidation]);
 
-  // ── Slug ─────────────────────────────────────────────────────────────────────
+  // ── Slug ──────────────────────────────────────────────────────────────────
   const slug = title
     .trim()
     .toLowerCase()
     .replace(/[^\w\s-]/g, "")
     .replace(/\s+/g, "-");
 
-  // ── Cover image ────────────────────────────────────────────────────────────
+  // ── Cover image ───────────────────────────────────────────────────────────
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    // Validate file type
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    if (!allowed.includes(file.type)) {
+      showToast("Only JPG, PNG, WebP, or GIF images are allowed", "error");
+      return;
+    }
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      showToast("Image must be under 5MB", "error");
+      return;
+    }
+
     setCoverFile(file);
     setCoverImage(URL.createObjectURL(file));
     if (errors.coverImage) setErrors((prev) => ({ ...prev, coverImage: null }));
   };
 
-  // ── Editor change ────────────────────────────────────────────────────────────
+  // ── Editor change ─────────────────────────────────────────────────────────
   const handleEditorChange = (state) => {
     setEditorState(state);
     state.read(() => {
@@ -244,54 +278,39 @@ const ArticleEditor = ({
     if (errors.content) setErrors((prev) => ({ ...prev, content: null }));
   };
 
-  // ── Save / Publish ────────────────────────────────────────────────────────────
+  // ── Save / Publish ────────────────────────────────────────────────────────
   const handleSave = async (publish = false) => {
     setErrors({});
     if (publish && !validateForPublish(true)) return;
 
     setIsSaving(true);
-
     try {
-      // 1. upload cover
-      let finalCoverUrl = articleToEdit?.cover_img || null;
-
+      // 1. Upload cover if new file selected
+      let finalCoverUrl = articleToEdit?.cover_img || coverImage || null;
       if (coverFile) {
         const uploaded = await uploadCoverApi(coverFile);
         finalCoverUrl = uploaded?.url || null;
       }
 
-      // 2. prepare content
+      // 2. Build content object from editor state
       const contentObj = editorState
         ? editorState.toJSON()
-        : articleToEdit?.content_en || {
-            root: {
-              children: [],
-              type: "root",
-              version: 1,
-            },
-          };
+        : articleToEdit?.content_en || { root: { children: [], type: "root", version: 1 } };
 
-      // ✅ 3. build payload with article_type_id (UUID)
+      // 3. Build payload — send the real DB UUID for article_type_id
       const payload = {
         title_en: title.trim(),
-        title_ar: title.trim(),
+        title_ar: title.trim(),       // Single-language editor: mirror to AR
         excerpt_en: excerpt.trim(),
-        excerpt_ar: excerpt.trim(),
+        excerpt_ar: excerpt.trim(),   // Mirror to AR
         content_en: contentObj,
-        content_ar: contentObj,
+        content_ar: contentObj,       // Mirror to AR
         status: publish ? "PUBLISHED" : "DRAFT",
         cover_img: finalCoverUrl || null,
-        
-        
-          type: type,
-
-        
+        article_type_id: selectedTypeId, // ← Real UUID from DB, never hardcoded
         ...(selectedTags.length > 0 && { tags: selectedTags }),
       };
 
-      console.log("🚀 FINAL PAYLOAD:", payload);
-
-      // 4. API call
       if (isEditMode) {
         await updateArticleApi(articleToEdit.article_id, payload);
       } else {
@@ -299,12 +318,9 @@ const ArticleEditor = ({
       }
 
       showToast(
-        publish
-          ? "🎉 Article published successfully!"
-          : "📝 Draft saved successfully!",
+        publish ? "🎉 Article published successfully!" : "📝 Draft saved successfully!",
         "success"
       );
-
       setStatus(publish ? "PUBLISHED" : "DRAFT");
       if (finalCoverUrl) setCoverImage(finalCoverUrl);
       setCoverFile(null);
@@ -318,66 +334,34 @@ const ArticleEditor = ({
 
   const metaBtn = (active, colorClass) =>
     `px-4 py-1.5 text-xs font-semibold rounded-lg border-2 transition-all duration-150 select-none ${
-      active
-        ? colorClass
-        : "border-gray-200 text-gray-400 hover:border-gray-300"
+      active ? colorClass : "border-gray-200 text-gray-400 hover:border-gray-300"
     }`;
 
   const initialConfig = {
     namespace: "ArticleEditor",
     theme: editorTheme,
     onError: (err) => console.error(err),
-    nodes: [
-      HeadingNode,
-      QuoteNode,
-      ListNode,
-      ListItemNode,
-      CodeNode,
-      CodeHighlightNode,
-      AutoLinkNode,
-      LinkNode,
-      ImageNode,
-    ],
+    nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, CodeNode, CodeHighlightNode, AutoLinkNode, LinkNode, ImageNode],
   };
 
   const getInitialContent = () => {
     try {
-      let raw =
-        articleToEdit?.content ||
-        articleToEdit?.content_en ||
-        null;
-
-      if (!raw) {
-        return {
-          root: {
-            children: [],
-            type: "root",
-            version: 1,
-          },
-        };
-      }
-
+      let raw = articleToEdit?.content_en || articleToEdit?.content || null;
+      if (!raw) return { root: { children: [], type: "root", version: 1 } };
       return typeof raw === "string" ? JSON.parse(raw) : raw;
     } catch {
-      return {
-        root: {
-          children: [],
-          type: "root",
-          version: 1,
-        },
-      };
+      return { root: { children: [], type: "root", version: 1 } };
     }
   };
 
+  // Get current type name for display
+  const currentTypeName = selectedTypeId
+    ? (articleTypes.find((t) => (t.article_type_id || t.id) === selectedTypeId)?.name_en || "")
+    : "";
+
   return (
     <>
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       <style>{`
         .editor-h1 { font-size:2rem; font-weight:700; color:#111827; margin:1rem 0 .5rem; }
@@ -403,10 +387,7 @@ const ArticleEditor = ({
               onClick={onClose}
               className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-800 mb-6 transition-colors group"
             >
-              <ArrowLeft
-                size={16}
-                className="group-hover:-translate-x-0.5 transition-transform"
-              />
+              <ArrowLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
               Back to Articles
             </button>
           )}
@@ -415,11 +396,9 @@ const ArticleEditor = ({
             <div className="mb-6 flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-700">
               <span className="font-semibold">Editing:</span>
               <span className="truncate font-medium text-blue-900">
-                {articleToEdit.title}
+                {articleToEdit.title_en || articleToEdit.title}
               </span>
-              <span className="ml-auto text-xs text-blue-400 font-mono">
-                {articleToEdit.article_id}
-              </span>
+              <span className="ml-auto text-xs text-blue-400 font-mono">{articleToEdit.article_id}</span>
             </div>
           )}
 
@@ -436,17 +415,17 @@ const ArticleEditor = ({
                   value={title}
                   onChange={(e) => {
                     setTitle(e.target.value);
-                    if (errors.title)
-                      setErrors((prev) => ({ ...prev, title: null }));
+                    if (errors.title) setErrors((prev) => ({ ...prev, title: null }));
                   }}
                   placeholder="Enter your article title…"
+                  maxLength={200}
                   className={`w-full border rounded-xl px-4 py-2.5 text-gray-900 text-lg font-medium placeholder-gray-400 transition-all outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                     errors.title ? "border-red-500 bg-red-50" : "border-gray-200"
                   }`}
                 />
                 {errors.title && (
-                  <p className="text-red-500 text-xs mt-1 flex items-center gap-1 animate-pulse">
-                    <span>●</span> {errors.title}
+                  <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
+                    <AlertCircle size={12} /> {errors.title}
                   </p>
                 )}
               </div>
@@ -454,10 +433,7 @@ const ArticleEditor = ({
               {/* Slug */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Slug{" "}
-                  <span className="font-normal text-gray-400 text-xs">
-                    (auto-generated)
-                  </span>
+                  Slug <span className="font-normal text-gray-400 text-xs">(auto-generated)</span>
                 </label>
                 <div className="flex items-center gap-2 border border-gray-100 rounded-xl px-4 py-2.5 bg-gray-100">
                   <span className="text-gray-400 text-sm">/articles/</span>
@@ -476,26 +452,21 @@ const ArticleEditor = ({
                   value={excerpt}
                   onChange={(e) => {
                     setExcerpt(e.target.value);
-                    if (errors.excerpt)
-                      setErrors((prev) => ({ ...prev, excerpt: null }));
+                    if (errors.excerpt) setErrors((prev) => ({ ...prev, excerpt: null }));
                   }}
                   rows={3}
                   maxLength={200}
                   placeholder="Short summary shown in article previews…"
                   className={`w-full border rounded-xl px-4 py-2.5 resize-none outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700 placeholder-gray-400 transition-all ${
-                    errors.excerpt
-                      ? "border-red-500 bg-red-50"
-                      : "border-gray-200"
+                    errors.excerpt ? "border-red-500 bg-red-50" : "border-gray-200"
                   }`}
                 />
                 <div className="flex justify-between mt-0.5">
                   {errors.excerpt ? (
-                    <p className="text-red-500 text-xs flex items-center gap-1 animate-pulse">
-                      <span>●</span> {errors.excerpt}
+                    <p className="text-red-500 text-xs flex items-center gap-1">
+                      <AlertCircle size={12} /> {errors.excerpt}
                     </p>
-                  ) : (
-                    <span></span>
-                  )}
+                  ) : <span />}
                   <p className="text-xs text-gray-400">{excerpt.length}/200</p>
                 </div>
               </div>
@@ -505,11 +476,7 @@ const ArticleEditor = ({
                 <label className="block text-sm font-semibold text-gray-700 mb-1">
                   Content <span className="text-red-500">*</span>
                 </label>
-                <div
-                  className={`rounded-xl overflow-hidden transition-all ${
-                    errors.content ? "ring-2 ring-red-500" : ""
-                  }`}
-                >
+                <div className={`rounded-xl overflow-hidden transition-all ${errors.content ? "ring-2 ring-red-500" : ""}`}>
                   <LexicalComposer initialConfig={initialConfig} key={articleToEdit?.article_id || "new"}>
                     <div className="border border-gray-200 rounded-xl shadow-sm overflow-visible bg-white">
                       <ToolbarPlugin />
@@ -520,8 +487,7 @@ const ArticleEditor = ({
                           }
                           placeholder={
                             <div className="editor-placeholder px-5 py-4 text-gray-400 pointer-events-none">
-                              Start writing your article… (Markdown shortcuts
-                              supported)
+                              Start writing your article… (Markdown shortcuts supported)
                             </div>
                           }
                           ErrorBoundary={LexicalErrorBoundary}
@@ -547,8 +513,8 @@ const ArticleEditor = ({
                   </LexicalComposer>
                 </div>
                 {errors.content && (
-                  <p className="text-red-500 text-xs mt-1 flex items-center gap-1 animate-pulse">
-                    <span>●</span> {errors.content}
+                  <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
+                    <AlertCircle size={12} /> {errors.content}
                   </p>
                 )}
               </div>
@@ -564,9 +530,7 @@ const ArticleEditor = ({
                     <svg className="animate-spin" width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                       <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                     </svg>
-                  ) : (
-                    <Save size={16} />
-                  )}
+                  ) : <Save size={16} />}
                   {isEditMode ? "Update Draft" : "Save Draft"}
                 </button>
 
@@ -575,8 +539,7 @@ const ArticleEditor = ({
                   disabled={isSaving}
                   className="flex items-center gap-2 border-2 border-green-500 text-green-600 px-5 py-2.5 rounded-xl font-medium hover:bg-green-50 active:scale-95 transition-all disabled:opacity-60"
                 >
-                  <Globe size={16} />{" "}
-                  {isEditMode ? "Update & Publish" : "Publish"}
+                  <Globe size={16} /> {isEditMode ? "Update & Publish" : "Publish"}
                 </button>
 
                 <button
@@ -591,83 +554,93 @@ const ArticleEditor = ({
             {/* RIGHT — Sidebar */}
             <div className="space-y-5">
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-5">
-                <h3 className="text-xs font-bold text-gray-400 tracking-widest uppercase">
-                  Metadata
-                </h3>
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 mb-2">Type</p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setType("BLOG")}
-                      className={metaBtn(
-                        type === "BLOG",
-                        "border-blue-300 bg-blue-50 text-blue-700"
-                      )}
-                    >
-                      Blog
-                    </button>
-                    <button
-                      onClick={() => setType("ACTUALITE")}
-                      className={metaBtn(
-                        type === "ACTUALITE",
-                        "border-purple-300 bg-purple-50 text-purple-700"
-                      )}
-                    >
-                      Actualité
-                    </button>
-                  </div>
-                </div>
+                <h3 className="text-xs font-bold text-gray-400 tracking-widest uppercase">Metadata</h3>
+
+                {/* Article Type — loaded from DB */}
                 <div>
                   <p className="text-xs font-semibold text-gray-500 mb-2">
-                    Status
+                    Type <span className="text-red-500">*</span>
                   </p>
+                  {typesLoading ? (
+                    <div className="flex gap-2">
+                      <div className="h-8 w-20 bg-gray-100 rounded-lg animate-pulse" />
+                      <div className="h-8 w-24 bg-gray-100 rounded-lg animate-pulse" />
+                    </div>
+                  ) : articleTypes.length === 0 ? (
+                    <p className="text-xs text-red-500 flex items-center gap-1">
+                      <AlertCircle size={12} /> No article types found in database
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {articleTypes.map((t) => {
+                        const typeId = t.article_type_id || t.id;
+                        const isActive = selectedTypeId === typeId;
+                        const colorMap = {
+                          BLOG: "border-blue-300 bg-blue-50 text-blue-700",
+                          ACTUALITE: "border-purple-300 bg-purple-50 text-purple-700",
+                          NEWS: "border-purple-300 bg-purple-50 text-purple-700",
+                        };
+                        const colorClass =
+                          colorMap[t.name_en?.toUpperCase()] ||
+                          "border-green-300 bg-green-50 text-green-700";
+                        return (
+                          <button
+                            key={typeId}
+                            onClick={() => {
+                              setSelectedTypeId(typeId);
+                              if (errors.type) setErrors((prev) => ({ ...prev, type: null }));
+                            }}
+                            className={`px-4 py-1.5 text-xs font-semibold rounded-lg border-2 transition-all duration-150 select-none ${
+                              isActive ? colorClass : "border-gray-200 text-gray-400 hover:border-gray-300"
+                            }`}
+                          >
+                            {t.name_en}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {errors.type && (
+                    <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
+                      <AlertCircle size={12} /> {errors.type}
+                    </p>
+                  )}
+                </div>
+
+                {/* Status */}
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 mb-2">Status</p>
                   <div className="flex gap-2">
                     <button
                       onClick={() => setStatus("DRAFT")}
-                      className={metaBtn(
-                        status === "DRAFT",
-                        "border-yellow-300 bg-yellow-50 text-yellow-700"
-                      )}
+                      className={metaBtn(status === "DRAFT", "border-yellow-300 bg-yellow-50 text-yellow-700")}
                     >
                       Draft
                     </button>
                     <button
                       onClick={() => setStatus("PUBLISHED")}
-                      className={metaBtn(
-                        status === "PUBLISHED",
-                        "border-green-300 bg-green-50 text-green-700"
-                      )}
+                      className={metaBtn(status === "PUBLISHED", "border-green-300 bg-green-50 text-green-700")}
                     >
                       Published
                     </button>
                   </div>
                 </div>
+
                 <div className="flex items-center gap-2 text-xs">
-                  <span
-                    className={`w-2 h-2 rounded-full ${
-                      status === "PUBLISHED" ? "bg-green-400" : "bg-yellow-400"
-                    }`}
-                  />
+                  <span className={`w-2 h-2 rounded-full ${status === "PUBLISHED" ? "bg-green-400" : "bg-yellow-400"}`} />
                   <span className="text-gray-500">
-                    {status === "PUBLISHED"
-                      ? "Live on site"
-                      : "Not yet published"}
+                    {status === "PUBLISHED" ? "Live on site" : "Not yet published"}
                   </span>
                 </div>
               </div>
 
+              {/* Tags */}
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
                 <div className="flex items-center gap-2 mb-4">
                   <Tag size={14} className="text-gray-400" />
-                  <h3 className="text-xs font-bold text-gray-400 tracking-widest uppercase">
-                    Tags
-                  </h3>
+                  <h3 className="text-xs font-bold text-gray-400 tracking-widest uppercase">Tags</h3>
                 </div>
-                <TagSelector
-                  options={availableTags}
-                  selected={selectedTags}
-                  onChange={setSelectedTags}
-                />
+                <TagSelector options={availableTags} selected={selectedTags} onChange={setSelectedTags} />
               </div>
 
               {/* Cover Image */}
@@ -677,7 +650,7 @@ const ArticleEditor = ({
                 </h3>
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
                   id="cover-upload"
                   className="hidden"
                   onChange={handleImageChange}
@@ -692,28 +665,22 @@ const ArticleEditor = ({
                 >
                   {coverImage ? (
                     <>
-                      <img
-                        src={coverImage}
-                        alt="cover"
-                        className="w-full h-full object-cover"
-                      />
+                      <img src={coverImage} alt="cover" className="w-full h-full object-cover" />
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <span className="text-white text-xs font-medium">
-                          Change Image
-                        </span>
+                        <span className="text-white text-xs font-medium">Change Image</span>
                       </div>
                     </>
                   ) : (
                     <div className="h-full flex flex-col items-center justify-center gap-2 text-gray-400 group-hover:text-blue-500 transition-colors">
                       <ImageIcon size={22} />
                       <span className="text-xs font-medium">Click to upload</span>
-                      <span className="text-xs opacity-60">PNG, JPG, WebP</span>
+                      <span className="text-xs opacity-60">PNG, JPG, WebP · max 5MB</span>
                     </div>
                   )}
                 </label>
                 {errors.coverImage && (
-                  <p className="text-red-500 text-xs mt-2 flex items-center gap-1 animate-pulse">
-                    <span>●</span> {errors.coverImage}
+                  <p className="text-red-500 text-xs mt-2 flex items-center gap-1">
+                    <AlertCircle size={12} /> {errors.coverImage}
                   </p>
                 )}
                 {coverImage && (
@@ -721,8 +688,6 @@ const ArticleEditor = ({
                     onClick={() => {
                       setCoverImage(null);
                       setCoverFile(null);
-                      if (errors.coverImage)
-                        setErrors((prev) => ({ ...prev, coverImage: null }));
                     }}
                     className="mt-2 flex items-center gap-1 text-xs text-red-400 hover:text-red-600 transition-colors"
                   >
@@ -731,32 +696,29 @@ const ArticleEditor = ({
                 )}
               </div>
 
+              {/* Info */}
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-2 text-xs text-gray-500">
-                <h3 className="text-xs font-bold text-gray-400 tracking-widest uppercase mb-3">
-                  Info
-                </h3>
+                <h3 className="text-xs font-bold text-gray-400 tracking-widest uppercase mb-3">Info</h3>
                 <div className="flex justify-between">
                   <span>Words</span>
                   <span className="font-medium text-gray-700">{wordCount}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Reading time</span>
-                  <span className="font-medium text-gray-700">
-                    ~{Math.max(1, Math.round(wordCount / 200))} min
-                  </span>
+                  <span className="font-medium text-gray-700">~{Math.max(1, Math.round(wordCount / 200))} min</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Type</span>
+                  <span className="font-medium text-gray-700">{currentTypeName || "—"}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Tags</span>
-                  <span className="font-medium text-gray-700">
-                    {selectedTags.length}
-                  </span>
+                  <span className="font-medium text-gray-700">{selectedTags.length}</span>
                 </div>
                 {isEditMode && (
                   <div className="flex justify-between pt-1 border-t border-gray-100 mt-1">
                     <span>Article ID</span>
-                    <span className="font-mono text-gray-400 text-[10px]">
-                      {articleToEdit.article_id}
-                    </span>
+                    <span className="font-mono text-gray-400 text-[10px]">{articleToEdit.article_id}</span>
                   </div>
                 )}
               </div>
